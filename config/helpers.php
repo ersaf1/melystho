@@ -1,0 +1,112 @@
+<?php
+
+function e($value): string
+{
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+function redirect(string $url): void
+{
+    header("Location: {$url}");
+    exit;
+}
+
+function is_post(): bool
+{
+    return $_SERVER['REQUEST_METHOD'] === 'POST';
+}
+
+function set_flash(string $type, string $message): void
+{
+    $_SESSION['flash'] = ['type' => $type, 'message' => $message];
+}
+
+function get_flash(): ?array
+{
+    if (!isset($_SESSION['flash'])) {
+        return null;
+    }
+    $flash = $_SESSION['flash'];
+    unset($_SESSION['flash']);
+    return $flash;
+}
+
+function format_rupiah($angka): string
+{
+    return 'Rp ' . number_format((float)$angka, 0, ',', '.');
+}
+
+function upload_file(array $file, string $targetDir, array $allowedMime, int $maxSize = 5242880): ?string
+{
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+    if ($file['size'] > $maxSize) {
+        return null;
+    }
+
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($file['tmp_name']);
+    if (!in_array($mime, $allowedMime, true)) {
+        return null;
+    }
+
+    $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+    $filename = uniqid('upload_', true) . '.' . strtolower($ext);
+    $targetDir = rtrim($targetDir, '/\\');
+    if (!is_dir($targetDir)) {
+        mkdir($targetDir, 0755, true);
+    }
+    $targetPath = $targetDir . DIRECTORY_SEPARATOR . $filename;
+    if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
+        return null;
+    }
+
+    return $filename;
+}
+
+function get_setting(string $name, $default = null)
+{
+    $pdo = db();
+    $stmt = $pdo->prepare("SELECT value FROM settings WHERE name = ?");
+    $stmt->execute([$name]);
+    $row = $stmt->fetch();
+    return $row ? $row['value'] : $default;
+}
+
+function set_setting(string $name, $value): void
+{
+    $pdo = db();
+    $stmt = $pdo->prepare("INSERT INTO settings (name, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)");
+    $stmt->execute([$name, $value]);
+}
+
+function generate_loan_number(): string
+{
+    $prefix = 'PJ-' . date('Ym') . '-';
+    $pdo = db();
+    $stmt = $pdo->prepare("SELECT COUNT(*) AS total FROM pinjaman WHERE nomor_pinjaman LIKE ?");
+    $stmt->execute([$prefix . '%']);
+    $total = (int)$stmt->fetch()['total'] + 1;
+    return $prefix . str_pad((string)$total, 4, '0', STR_PAD_LEFT);
+}
+
+function build_pagination(int $total, int $page, int $perPage, string $baseUrl): string
+{
+    $totalPages = (int)ceil($total / $perPage);
+    if ($totalPages <= 1) {
+        return '';
+    }
+
+    $html = '<nav><ul class="pagination">';
+    $prev = max(1, $page - 1);
+    $next = min($totalPages, $page + 1);
+    $html .= '<li class="page-item' . ($page <= 1 ? ' disabled' : '') . '"><a class="page-link" href="' . $baseUrl . 'page=' . $prev . '">Prev</a></li>';
+    for ($i = 1; $i <= $totalPages; $i++) {
+        $html .= '<li class="page-item' . ($i === $page ? ' active' : '') . '"><a class="page-link" href="' . $baseUrl . 'page=' . $i . '">' . $i . '</a></li>';
+    }
+    $html .= '<li class="page-item' . ($page >= $totalPages ? ' disabled' : '') . '"><a class="page-link" href="' . $baseUrl . 'page=' . $next . '">Next</a></li>';
+    $html .= '</ul></nav>';
+
+    return $html;
+}
