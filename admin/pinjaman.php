@@ -30,6 +30,13 @@ $role = 'admin';
 ?>
 <?php require __DIR__ . '/../includes/dashboard_top.php'; ?>
 
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Manajemen Pinjaman</h1>
+        <p class="page-sub">Kelola pengajuan dan status pinjaman anggota.</p>
+    </div>
+</div>
+
 <div class="card card-stat p-3 mb-3">
     <h5 class="mb-3">Filter Pinjaman</h5>
     <form class="row g-2">
@@ -55,8 +62,15 @@ $role = 'admin';
     </form>
 </div>
 
+<div class="filter-bar">
+    <div class="search-input-wrap">
+        <i class="bi bi-search search-icon"></i>
+        <input type="search" class="form-control" placeholder="Cari pinjaman..." data-table-search="#pinjamanAdminTable">
+    </div>
+</div>
+
 <div class="table-responsive">
-    <table class="table table-striped">
+    <table class="table table-striped" id="pinjamanAdminTable">
         <thead>
             <tr>
                 <th>No Pinjaman</th>
@@ -74,7 +88,7 @@ $role = 'admin';
                     <td><?= e($row['nama']); ?></td>
                     <td><?= format_rupiah($row['nominal']); ?></td>
                     <td><?= e($row['tenor']); ?> bulan</td>
-                    <td><span class="badge bg-secondary"><?= e($row['status']); ?></span></td>
+                    <td><span class="badge-status <?= status_badge_class($row['status']); ?>"><?= e($row['status']); ?></span></td>
                     <td><a href="/admin/detail-pinjaman.php?id=<?= e($row['id']); ?>" class="btn btn-sm btn-outline-primary">Detail</a></td>
                 </tr>
             <?php endforeach; ?>

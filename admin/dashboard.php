@@ -4,6 +4,7 @@ require_once __DIR__ . '/../config/helpers.php';
 require_admin();
 
 $pdo = db();
+sync_late_fines();
 
 $totalAnggota        = (int)$pdo->query("SELECT COUNT(*) AS total FROM users WHERE role = 'user'")->fetch()['total'];
 $menungguVerif       = (int)$pdo->query("SELECT COUNT(*) AS total FROM users WHERE role = 'user' AND status_verifikasi = 'Menunggu Verifikasi'")->fetch()['total'];
@@ -12,6 +13,7 @@ $totalPinjamanAktif  = (float)$pdo->query("SELECT SUM(nominal) AS total FROM pin
 $totalPinjamanMenunggu = (int)$pdo->query("SELECT COUNT(*) AS total FROM pinjaman WHERE status = 'Menunggu review'")->fetch()['total'];
 $totalAngsuranBulan  = (float)$pdo->query("SELECT SUM(nominal) AS total FROM angsuran WHERE status = 'Diterima' AND MONTH(tanggal_bayar) = MONTH(CURDATE()) AND YEAR(tanggal_bayar) = YEAR(CURDATE())")->fetch()['total'];
 $pinjamanJatuhTempo  = (int)$pdo->query("SELECT COUNT(*) AS total FROM angsuran a JOIN pinjaman p ON a.pinjaman_id = p.id WHERE a.status != 'Diterima' AND a.jatuh_tempo < CURDATE() AND p.status IN ('Disetujui', 'Dicairkan')")->fetch()['total'];
+$totalDendaBelumBayar = unpaid_fines_total();
 
 // Chart data
 $months = [];
@@ -24,15 +26,19 @@ foreach ($months as $month) {
     $s->execute([$month]);
     $p = $pdo->prepare("SELECT SUM(nominal) AS total FROM pinjaman WHERE status IN ('Disetujui', 'Dicairkan') AND DATE_FORMAT(tanggal_disetujui, '%Y-%m') = ?");
     $p->execute([$month]);
+    $a = $pdo->prepare("SELECT SUM(nominal) AS total FROM angsuran WHERE status = 'Diterima' AND DATE_FORMAT(tanggal_bayar, '%Y-%m') = ?");
+    $a->execute([$month]);
     $chartData[] = [
         'month'    => $month,
         'simpanan' => (float)($s->fetch()['total'] ?? 0),
         'pinjaman' => (float)($p->fetch()['total'] ?? 0),
+        'angsuran' => (float)($a->fetch()['total'] ?? 0),
     ];
 }
 $labels         = array_map(fn($m) => date('M Y', strtotime($m . '-01')), $months);
 $simpananSeries = array_map(fn($d) => $d['simpanan'], $chartData);
 $pinjamanSeries = array_map(fn($d) => $d['pinjaman'], $chartData);
+$angsuranSeries = array_map(fn($d) => $d['angsuran'], $chartData);
 
 // Recent members waiting
 $pendingAnggota = $pdo->query("SELECT id, nama, email, created_at FROM users WHERE role='user' AND status_verifikasi='Menunggu Verifikasi' ORDER BY created_at DESC LIMIT 5")->fetchAll();
@@ -116,7 +122,7 @@ function badgeClass($status) {
 
 <!-- ─── STAT CARDS ROW 2 ─── -->
 <div class="row g-3 mb-4">
-    <div class="col-sm-6 col-md-4">
+    <div class="col-sm-6 col-xl-3">
         <div class="stat-card amber">
             <div class="stat-icon amber"><i class="bi bi-hourglass-split"></i></div>
             <div class="stat-info">
@@ -126,7 +132,7 @@ function badgeClass($status) {
             </div>
         </div>
     </div>
-    <div class="col-sm-6 col-md-4">
+    <div class="col-sm-6 col-xl-3">
         <div class="stat-card green">
             <div class="stat-icon green"><i class="bi bi-calendar-check-fill"></i></div>
             <div class="stat-info">
@@ -136,13 +142,23 @@ function badgeClass($status) {
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-sm-6 col-xl-3">
         <div class="stat-card red">
             <div class="stat-icon red"><i class="bi bi-exclamation-triangle-fill"></i></div>
             <div class="stat-info">
                 <div class="stat-label">Jatuh Tempo</div>
                 <div class="stat-value"><?= $pinjamanJatuhTempo; ?></div>
                 <div class="stat-trend">Angsuran melewati batas</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card red">
+            <div class="stat-icon red"><i class="bi bi-receipt-cutoff"></i></div>
+            <div class="stat-info">
+                <div class="stat-label">Denda Belum Dibayar</div>
+                <div class="stat-value sm"><?= format_rupiah($totalDendaBelumBayar); ?></div>
+                <div class="stat-trend"><a href="/admin/angsuran.php#denda" style="color:var(--accent-red);font-size:.75rem">Lihat denda -></a></div>
             </div>
         </div>
     </div>
@@ -155,7 +171,7 @@ function badgeClass($status) {
         <div class="panel h-100">
             <div class="panel-header">
                 <span class="panel-title"><i class="bi bi-bar-chart-line me-2" style="color:var(--primary)"></i>Grafik 6 Bulan Terakhir</span>
-                <span style="font-size:.75rem;color:var(--text-muted)">Simpanan vs Pinjaman</span>
+                <span style="font-size:.75rem;color:var(--text-muted)">Simpanan, pinjaman, dan angsuran</span>
             </div>
             <div class="panel-body chart-wrap">
                 <canvas id="chartKoperasi" height="220"></canvas>
@@ -285,6 +301,18 @@ document.addEventListener("DOMContentLoaded", () => {
                     fill: false,
                     tension: 0.4,
                     pointBackgroundColor: "#d97706",
+                    pointRadius: 4,
+                },
+                {
+                    label: "Angsuran",
+                    data: ' . json_encode($angsuranSeries) . ',
+                    backgroundColor: "rgba(37,99,235,.15)",
+                    borderColor: "#2563eb",
+                    borderWidth: 2,
+                    type: "line",
+                    fill: false,
+                    tension: 0.35,
+                    pointBackgroundColor: "#2563eb",
                     pointRadius: 4,
                 }
             ]

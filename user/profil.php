@@ -38,6 +38,7 @@ if (is_post()) {
         $sql .= " WHERE id = ?";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
+        log_activity((int)$user['id'], 'Memperbarui profil');
         set_flash('success', 'Profil berhasil diperbarui.');
         redirect('/user/profil.php');
     }

@@ -15,6 +15,14 @@ $statusMap = [
 ];
 $verifStatus  = $authUser['status_verifikasi'] ?? 'Menunggu Verifikasi';
 $statusInfo   = $statusMap[$verifStatus] ?? ['class' => 'pending', 'label' => $verifStatus];
+$role         = $authUser['role'] ?? 'user';
+
+ensure_feature_tables();
+sync_late_fines($role === 'user' ? (int)$authUser['id'] : null);
+sync_due_reminders($role === 'user' ? (int)$authUser['id'] : null);
+
+$unreadNotifications = unread_notification_count((int)$authUser['id']);
+$notificationUrl     = $role === 'admin' ? '/admin/notifikasi.php' : '/user/notifikasi.php';
 ?>
 <?php require __DIR__ . '/header.php'; ?>
 
@@ -59,6 +67,15 @@ $statusInfo   = $statusMap[$verifStatus] ?? ['class' => 'pending', 'label' => $v
         <a href="/admin/laporan.php" class="sidebar-link" id="sl-laporan">
             <i class="bi bi-file-earmark-bar-graph"></i>Laporan
         </a>
+        <a href="/admin/notifikasi.php" class="sidebar-link" id="sl-notifikasi">
+            <i class="bi bi-bell"></i>Notifikasi
+            <?php if ($unreadNotifications > 0): ?>
+                <span class="sidebar-link-badge"><?= $unreadNotifications; ?></span>
+            <?php endif; ?>
+        </a>
+        <a href="/admin/audit-log.php" class="sidebar-link" id="sl-audit-log">
+            <i class="bi bi-shield-check"></i>Audit Log
+        </a>
         <a href="/admin/pengaturan.php" class="sidebar-link" id="sl-pengaturan">
             <i class="bi bi-gear"></i>Pengaturan
         </a>
@@ -80,6 +97,15 @@ $statusInfo   = $statusMap[$verifStatus] ?? ['class' => 'pending', 'label' => $v
         </a>
         <a href="/user/bayar-angsuran.php" class="sidebar-link" id="sl-angsuran">
             <i class="bi bi-calendar-check"></i>Angsuran
+        </a>
+        <a href="/user/notifikasi.php" class="sidebar-link" id="sl-notifikasi">
+            <i class="bi bi-bell"></i>Notifikasi
+            <?php if ($unreadNotifications > 0): ?>
+                <span class="sidebar-link-badge"><?= $unreadNotifications; ?></span>
+            <?php endif; ?>
+        </a>
+        <a href="/user/riwayat-aktivitas.php" class="sidebar-link" id="sl-riwayat-aktivitas">
+            <i class="bi bi-clock-history"></i>Riwayat Aktivitas
         </a>
       <?php endif; ?>
     </nav>
@@ -108,6 +134,12 @@ $statusInfo   = $statusMap[$verifStatus] ?? ['class' => 'pending', 'label' => $v
         <span class="topbar-page-title"><?= e($page_title ?? 'Dashboard'); ?></span>
       </div>
       <div class="topbar-right">
+        <a href="<?= e($notificationUrl); ?>" class="topbar-notification" title="Notifikasi">
+          <i class="bi bi-bell"></i>
+          <?php if ($unreadNotifications > 0): ?>
+            <span><?= $unreadNotifications; ?></span>
+          <?php endif; ?>
+        </a>
         <span class="status-pill <?= $statusInfo['class']; ?>"><?= $statusInfo['label']; ?></span>
         <div class="topbar-user">
           <div class="topbar-avatar"><?= $initials; ?></div>

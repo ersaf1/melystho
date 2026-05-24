@@ -4,6 +4,7 @@ require_once __DIR__ . '/../config/helpers.php';
 require_admin();
 
 $pdo = db();
+$authUser = current_user();
 $id = (int)($_GET['id'] ?? 0);
 $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND role = 'user'");
 $stmt->execute([$id]);
@@ -29,6 +30,18 @@ if (is_post()) {
         $errors[] = 'Nama, NIK, dan email wajib diisi.';
     }
 
+    if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+        $errors[] = 'Format email tidak valid.';
+    }
+
+    if (empty($errors)) {
+        $check = $pdo->prepare("SELECT id FROM users WHERE (nik = ? OR email = ?) AND id != ? LIMIT 1");
+        $check->execute([$data['nik'], $data['email'], $id]);
+        if ($check->fetch()) {
+            $errors[] = 'NIK atau email sudah digunakan anggota lain.';
+        }
+    }
+
     if (empty($errors)) {
         $stmt = $pdo->prepare("UPDATE users SET nama = ?, nik = ?, alamat = ?, no_hp = ?, email = ?, pekerjaan = ?, status_verifikasi = ?, updated_at = NOW() WHERE id = ?");
         $stmt->execute([
@@ -41,6 +54,7 @@ if (is_post()) {
             $data['status_verifikasi'],
             $id
         ]);
+        log_activity((int)$authUser['id'], 'Mengedit data anggota ' . $data['nama']);
         set_flash('success', 'Data anggota diperbarui.');
         redirect('/admin/detail-anggota.php?id=' . $id);
     }

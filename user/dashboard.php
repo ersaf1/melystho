@@ -5,6 +5,8 @@ require_user();
 
 $user = current_user();
 $pdo  = db();
+sync_late_fines((int)$user['id']);
+sync_due_reminders((int)$user['id']);
 
 $stmt = $pdo->prepare("SELECT jenis_simpanan, SUM(nominal) AS total FROM simpanan WHERE user_id = ? AND status = 'Diterima' GROUP BY jenis_simpanan");
 $stmt->execute([$user['id']]);
@@ -21,6 +23,7 @@ $totalPinjaman = (float)($stmt->fetch()['total'] ?? 0);
 $stmt = $pdo->prepare("SELECT SUM(a.nominal) AS total FROM angsuran a JOIN pinjaman p ON a.pinjaman_id = p.id WHERE p.user_id = ? AND a.status != 'Diterima'");
 $stmt->execute([$user['id']]);
 $sisaAngsuran = (float)($stmt->fetch()['total'] ?? 0);
+$totalDenda = unpaid_fines_total((int)$user['id']);
 
 $recentSimpanan = $pdo->prepare("SELECT * FROM simpanan WHERE user_id = ? ORDER BY tanggal_transaksi DESC LIMIT 5");
 $recentSimpanan->execute([$user['id']]);
@@ -127,6 +130,16 @@ function badgeClass($status) {
         </div>
     </div>
 </div>
+
+<?php if ($totalDenda > 0): ?>
+    <div class="alert alert-danger-custom mb-4">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <div>
+            <strong>Denda belum dibayar: <?= format_rupiah($totalDenda); ?></strong>
+            <div style="font-size:.82rem;margin-top:2px">Detail denda dapat dilihat pada halaman angsuran dan detail pinjaman.</div>
+        </div>
+    </div>
+<?php endif; ?>
 
 <!-- ─── SIMPANAN BREAKDOWN ─── -->
 <div class="row g-3 mb-4">

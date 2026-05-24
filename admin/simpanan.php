@@ -4,6 +4,7 @@ require_once __DIR__ . '/../config/helpers.php';
 require_admin();
 
 $pdo = db();
+$authUser = current_user();
 
 if (isset($_GET['print'])) {
     $id   = (int)$_GET['print'];
@@ -35,11 +36,15 @@ if (is_post()) {
     if ($action === 'manual') {
         $userId    = (int)($_POST['user_id'] ?? 0);
         $jenis     = $_POST['jenis_simpanan'] ?? 'sukarela';
+        if (!in_array($jenis, ['pokok', 'wajib', 'sukarela'], true)) {
+            $jenis = 'sukarela';
+        }
         $nominal   = (float)($_POST['nominal'] ?? 0);
         $keterangan = trim($_POST['keterangan'] ?? '');
         if ($userId && $nominal > 0) {
             $pdo->prepare("INSERT INTO simpanan (user_id, jenis_simpanan, nominal, bukti_transfer, status, keterangan, tanggal_transaksi, created_at) VALUES (?, ?, ?, '', 'Diterima', ?, CURDATE(), NOW())")->execute([$userId, $jenis, $nominal, $keterangan]);
             $pdo->prepare("INSERT INTO transaksi_kas (tipe, kategori, nominal, keterangan, tanggal, created_at) VALUES ('masuk', 'simpanan', ?, ?, CURDATE(), NOW())")->execute([$nominal, 'Simpanan manual']);
+            log_activity((int)$authUser['id'], 'Menambah simpanan manual sebesar ' . format_rupiah($nominal));
             set_flash('success', 'Transaksi simpanan berhasil ditambahkan.');
         }
     } elseif (in_array($action, ['approve', 'reject'], true)) {
@@ -47,12 +52,14 @@ if (is_post()) {
         if ($id) {
             $status = $action === 'approve' ? 'Diterima' : 'Ditolak';
             $pdo->prepare("UPDATE simpanan SET status = ? WHERE id = ?")->execute([$status, $id]);
+            $row = $pdo->prepare("SELECT s.nominal, s.user_id, u.nama FROM simpanan s JOIN users u ON u.id = s.user_id WHERE s.id = ?");
+            $row->execute([$id]);
+            $simpananRow = $row->fetch();
             if ($status === 'Diterima') {
-                $row = $pdo->prepare("SELECT nominal FROM simpanan WHERE id = ?");
-                $row->execute([$id]);
-                $nominal = (float)($row->fetch()['nominal'] ?? 0);
+                $nominal = (float)($simpananRow['nominal'] ?? 0);
                 $pdo->prepare("INSERT INTO transaksi_kas (tipe, kategori, nominal, keterangan, tanggal, created_at) VALUES ('masuk', 'simpanan', ?, 'Simpanan anggota', CURDATE(), NOW())")->execute([$nominal]);
             }
+            log_activity((int)$authUser['id'], ($status === 'Diterima' ? 'Menyetujui' : 'Menolak') . ' simpanan ' . ($simpananRow['nama'] ?? 'anggota'));
             set_flash('success', 'Status simpanan diperbarui.');
         }
     }
@@ -141,6 +148,13 @@ function badgeClass($status) {
             </form>
         </div>
 
+        <div class="filter-bar">
+            <div class="search-input-wrap">
+                <i class="bi bi-search search-icon"></i>
+                <input type="search" class="form-control" placeholder="Cari simpanan..." data-table-search="#simpananTable">
+            </div>
+        </div>
+
         <!-- Table -->
         <div class="panel">
             <div class="panel-header">
@@ -148,7 +162,7 @@ function badgeClass($status) {
                 <span style="font-size:.75rem;color:var(--text-muted)"><?= count($simpanan); ?> transaksi</span>
             </div>
             <div class="table-responsive panel-body p-0">
-                <table class="data-table">
+                <table class="data-table" id="simpananTable">
                     <thead>
                         <tr>
                             <th>Tanggal</th>

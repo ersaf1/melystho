@@ -19,8 +19,15 @@ $role = 'user';
     <a href="/user/ajukan-simpanan.php" class="btn btn-primary">Ajukan Simpanan</a>
 </div>
 
+<div class="filter-bar">
+    <div class="search-input-wrap">
+        <i class="bi bi-search search-icon"></i>
+        <input type="search" class="form-control" placeholder="Cari simpanan..." data-table-search="#simpananUserTable">
+    </div>
+</div>
+
 <div class="table-responsive">
-    <table class="table table-striped">
+    <table class="table table-striped" id="simpananUserTable">
         <thead>
             <tr>
                 <th>Tanggal</th>
@@ -36,7 +43,7 @@ $role = 'user';
                     <td><?= e($item['tanggal_transaksi']); ?></td>
                     <td><?= e(ucfirst($item['jenis_simpanan'])); ?></td>
                     <td><?= format_rupiah($item['nominal']); ?></td>
-                    <td><span class="badge bg-secondary badge-status"><?= e($item['status']); ?></span></td>
+                    <td><span class="badge-status <?= status_badge_class($item['status']); ?>"><?= e($item['status']); ?></span></td>
                     <td><?= e($item['keterangan']); ?></td>
                 </tr>
             <?php endforeach; ?>

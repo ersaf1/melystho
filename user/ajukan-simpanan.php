@@ -35,6 +35,8 @@ if (is_post()) {
     if (empty($errors)) {
         $stmt = $pdo->prepare("INSERT INTO simpanan (user_id, jenis_simpanan, nominal, bukti_transfer, status, keterangan, tanggal_transaksi, created_at) VALUES (?, ?, ?, ?, 'Menunggu konfirmasi', ?, CURDATE(), NOW())");
         $stmt->execute([$user['id'], $jenis, $nominal, $bukti, $catatan]);
+        log_activity((int)$user['id'], 'Mengajukan simpanan ' . ucfirst($jenis) . ' sebesar ' . format_rupiah($nominal));
+        notify_admins('Pengajuan simpanan baru', $user['nama'] . ' mengajukan simpanan ' . ucfirst($jenis) . ' sebesar ' . format_rupiah($nominal) . '.');
         set_flash('success', 'Pengajuan simpanan berhasil. Menunggu konfirmasi admin.');
         redirect('/user/simpanan.php');
     }

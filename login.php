@@ -20,6 +20,7 @@ if (is_post()) {
         if ($user && password_verify($password, $user['password'])) {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['role']    = $user['role'];
+            log_activity((int)$user['id'], 'Login ke sistem');
             redirect($user['role'] === 'admin' ? '/admin/dashboard.php' : '/user/dashboard.php');
         }
         $errors[] = 'Username/email atau password salah.';

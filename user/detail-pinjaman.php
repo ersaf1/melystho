@@ -14,8 +14,15 @@ if (!$pinjaman) {
     set_flash('danger', 'Pinjaman tidak ditemukan.');
     redirect('/user/pinjaman.php');
 }
+sync_late_fines((int)$user['id']);
 
-$scheduleStmt = $pdo->prepare("SELECT * FROM angsuran WHERE pinjaman_id = ? ORDER BY angsuran_ke ASC");
+$scheduleStmt = $pdo->prepare("
+    SELECT a.*, d.jumlah_hari, d.total_denda, d.status AS status_denda
+    FROM angsuran a
+    LEFT JOIN denda d ON d.angsuran_id = a.id
+    WHERE a.pinjaman_id = ?
+    ORDER BY a.angsuran_ke ASC
+");
 $scheduleStmt->execute([$pinjaman['id']]);
 $schedule = $scheduleStmt->fetchAll();
 
@@ -54,6 +61,7 @@ $role = 'user';
                 <th>Jatuh Tempo</th>
                 <th>Nominal</th>
                 <th>Status</th>
+                <th>Denda</th>
             </tr>
         </thead>
         <tbody>
@@ -62,11 +70,19 @@ $role = 'user';
                     <td><?= e($row['angsuran_ke']); ?></td>
                     <td><?= e($row['jatuh_tempo']); ?></td>
                     <td><?= format_rupiah($row['nominal']); ?></td>
-                    <td><span class="badge bg-secondary"><?= e($row['status']); ?></span></td>
+                    <td><span class="badge-status <?= status_badge_class($row['status']); ?>"><?= e($row['status']); ?></span></td>
+                    <td>
+                        <?php if (!empty($row['total_denda'])): ?>
+                            <strong style="color:var(--accent-red)"><?= format_rupiah($row['total_denda']); ?></strong>
+                            <div style="font-size:.72rem;color:var(--text-muted)"><?= e($row['jumlah_hari']); ?> hari - <?= e($row['status_denda']); ?></div>
+                        <?php else: ?>
+                            <span class="text-muted">-</span>
+                        <?php endif; ?>
+                    </td>
                 </tr>
             <?php endforeach; ?>
             <?php if (empty($schedule)): ?>
-                <tr><td colspan="4" class="text-muted">Jadwal belum dibuat.</td></tr>
+                <tr><td colspan="5" class="text-muted">Jadwal belum dibuat.</td></tr>
             <?php endif; ?>
         </tbody>
     </table>

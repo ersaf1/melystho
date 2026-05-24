@@ -86,9 +86,48 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT
 );
 
+CREATE TABLE IF NOT EXISTS denda (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    angsuran_id INT NOT NULL UNIQUE,
+    user_id INT NOT NULL,
+    jumlah_hari INT NOT NULL DEFAULT 0,
+    tarif_per_hari DECIMAL(15,2) NOT NULL DEFAULT 0,
+    total_denda DECIMAL(15,2) NOT NULL DEFAULT 0,
+    status ENUM('Belum Dibayar', 'Dibayar') DEFAULT 'Belum Dibayar',
+    tanggal_denda DATE NOT NULL,
+    tanggal_bayar DATE NULL,
+    created_at DATETIME,
+    updated_at DATETIME,
+    INDEX idx_denda_user_status (user_id, status),
+    FOREIGN KEY (angsuran_id) REFERENCES angsuran(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    judul VARCHAR(150) NOT NULL,
+    pesan TEXT NOT NULL,
+    is_read TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME,
+    INDEX idx_notifications_user_read (user_id, is_read),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS activity_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    aktivitas VARCHAR(255) NOT NULL,
+    created_at DATETIME,
+    INDEX idx_activity_logs_user_created (user_id, created_at),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 INSERT INTO settings (name, value) VALUES
 ('default_bunga_persen', '2'),
-('max_active_loans', '1')
+('max_active_loans', '1'),
+('denda_per_hari', '5000'),
+('reminder_days_before_due', '3')
 ON DUPLICATE KEY UPDATE value = VALUES(value);
 
 -- Seed users (password: "password")

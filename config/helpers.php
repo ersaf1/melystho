@@ -110,3 +110,5 @@ function build_pagination(int $total, int $page, int $perPage, string $baseUrl):
 
     return $html;
 }
+
+require_once __DIR__ . '/features.php';

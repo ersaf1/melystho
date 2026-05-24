@@ -4,19 +4,26 @@ require_once __DIR__ . '/../config/helpers.php';
 require_admin();
 
 $pdo = db();
+$authUser = current_user();
 
 if (is_post()) {
     $id     = (int)($_POST['id'] ?? 0);
     $action = $_POST['action'] ?? '';
     if ($id > 0) {
+        $targetStmt = $pdo->prepare("SELECT nama FROM users WHERE id = ? AND role = 'user'");
+        $targetStmt->execute([$id]);
+        $targetName = $targetStmt->fetch()['nama'] ?? 'Anggota';
         if ($action === 'approve') {
             $pdo->prepare("UPDATE users SET status_verifikasi = 'Disetujui', updated_at = NOW() WHERE id = ?")->execute([$id]);
+            log_activity((int)$authUser['id'], 'Menyetujui anggota ' . $targetName);
             set_flash('success', 'Anggota berhasil disetujui.');
         } elseif ($action === 'reject') {
             $pdo->prepare("UPDATE users SET status_verifikasi = 'Ditolak', updated_at = NOW() WHERE id = ?")->execute([$id]);
+            log_activity((int)$authUser['id'], 'Menolak anggota ' . $targetName);
             set_flash('success', 'Pendaftaran anggota ditolak.');
         } elseif ($action === 'toggle') {
             $pdo->prepare("UPDATE users SET status_verifikasi = IF(status_verifikasi = 'Nonaktif', 'Disetujui', 'Nonaktif'), updated_at = NOW() WHERE id = ?")->execute([$id]);
+            log_activity((int)$authUser['id'], 'Mengubah status aktif anggota ' . $targetName);
             set_flash('success', 'Status anggota diperbarui.');
         }
     }
@@ -50,8 +57,19 @@ $page_title = 'Manajemen Anggota';
 $role       = 'admin';
 $baseUrl    = '/admin/anggota.php?' . ($q !== '' ? 'q=' . urlencode($q) . '&' : '');
 
-function badgeClass($status) {
-    $map = ['Menunggu Verifikasi' => 'badge-menunggu', 'Disetujui' => 'badge-disetujui', 'Ditolak' => 'badge-ditolak', 'Nonaktif' => 'badge-nonaktif'];
+/**
+ * Map status string to CSS badge class.
+ *
+ * @param string|null $status
+ * @return string
+ */
+function badgeClass(?string $status = null): string {
+    $map = [
+        'Menunggu Verifikasi' => 'badge-menunggu',
+        'Disetujui'           => 'badge-disetujui',
+        'Ditolak'             => 'badge-ditolak',
+        'Nonaktif'            => 'badge-nonaktif',
+    ];
     return $map[$status] ?? 'badge-nonaktif';
 }
 ?>
@@ -71,7 +89,7 @@ function badgeClass($status) {
             <label class="form-label" style="font-size:.78rem">Cari Anggota</label>
             <div class="search-input-wrap">
                 <i class="bi bi-search search-icon"></i>
-                <input type="text" name="q" class="form-control" placeholder="Nama, NIK, atau email…" value="<?= e($q); ?>" id="searchAnggota">
+                <input type="text" name="q" class="form-control" placeholder="Nama, NIK, atau email..." value="<?= e($q); ?>" id="searchAnggota" data-table-search="#anggotaTable">
             </div>
         </div>
         <div class="col-auto">
@@ -98,7 +116,7 @@ function badgeClass($status) {
         </span>
     </div>
     <div class="table-responsive panel-body p-0">
-        <table class="data-table">
+        <table class="data-table" id="anggotaTable">
             <thead>
                 <tr>
                     <th>#</th>

@@ -46,11 +46,12 @@ if (is_post()) {
             $totalBunga = $nominal * ($bunga / 100) * $tenor;
             $totalBayar = $nominal + $totalBunga;
             $angsuran = $totalBayar / $tenor;
+            $nomorPinjaman = generate_loan_number();
 
             $stmt = $pdo->prepare("INSERT INTO pinjaman (user_id, nomor_pinjaman, nominal, bunga_persen, tenor, total_bayar, angsuran_per_bulan, tujuan, penghasilan, catatan, dokumen_pendukung, status, tanggal_pengajuan, created_at, alasan_penolakan) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Menunggu review', CURDATE(), NOW(), '')");
             $stmt->execute([
                 $user['id'],
-                generate_loan_number(),
+                $nomorPinjaman,
                 $nominal,
                 $bunga,
                 $tenor,
@@ -62,6 +63,8 @@ if (is_post()) {
                 $dokumen
             ]);
 
+            log_activity((int)$user['id'], 'Mengajukan pinjaman ' . $nomorPinjaman . ' sebesar ' . format_rupiah($nominal));
+            notify_admins('Pengajuan pinjaman baru', $user['nama'] . ' mengajukan pinjaman ' . $nomorPinjaman . ' sebesar ' . format_rupiah($nominal) . '.');
             set_flash('success', 'Pengajuan pinjaman berhasil dikirim.');
             redirect('/user/pinjaman.php');
         }

@@ -26,8 +26,15 @@ $role = 'user';
     </div>
 <?php endif; ?>
 
+<div class="filter-bar">
+    <div class="search-input-wrap">
+        <i class="bi bi-search search-icon"></i>
+        <input type="search" class="form-control" placeholder="Cari pinjaman..." data-table-search="#pinjamanUserTable">
+    </div>
+</div>
+
 <div class="table-responsive">
-    <table class="table table-striped">
+    <table class="table table-striped" id="pinjamanUserTable">
         <thead>
             <tr>
                 <th>No Pinjaman</th>
@@ -45,7 +52,7 @@ $role = 'user';
                     <td><?= e($item['tanggal_pengajuan']); ?></td>
                     <td><?= format_rupiah($item['nominal']); ?></td>
                     <td><?= e($item['tenor']); ?> bulan</td>
-                    <td><span class="badge bg-secondary"><?= e($item['status']); ?></span></td>
+                    <td><span class="badge-status <?= status_badge_class($item['status']); ?>"><?= e($item['status']); ?></span></td>
                     <td><a href="/user/detail-pinjaman.php?id=<?= e($item['id']); ?>" class="btn btn-sm btn-outline-primary">Detail</a></td>
                 </tr>
             <?php endforeach; ?>

@@ -720,6 +720,34 @@ a { transition: var(--transition); }
 .topbar-breadcrumb { display: flex; align-items: center; gap: .5rem; }
 .topbar-page-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); margin: 0; }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: .75rem; }
+.topbar-notification {
+  width: 38px; height: 38px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  text-decoration: none;
+  transition: var(--transition);
+}
+.topbar-notification:hover { background: var(--primary-soft); color: var(--primary); }
+.topbar-notification span {
+  position: absolute;
+  top: -4px; right: -4px;
+  min-width: 18px; height: 18px;
+  padding: 0 .3rem;
+  border-radius: var(--radius-full);
+  background: var(--accent-red);
+  color: #fff;
+  font-size: .65rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg-card);
+}
 .topbar-user {
   display: flex; align-items: center; gap: .6rem;
   padding: .4rem .75rem;
@@ -832,6 +860,14 @@ a { transition: var(--transition); }
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow: hidden;
+}
+.form-section,
+.card-stat {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-xs);
 }
 .panel-header {
   display: flex;
@@ -1280,7 +1316,8 @@ a { transition: var(--transition); }
 .divider { height: 1px; background: var(--border); margin: 1.5rem 0; }
 
 /* ─── CHART CONTAINER ─── */
-.chart-wrap { position: relative; padding: .5rem; }
+.chart-wrap { position: relative; padding: .5rem; min-height: 300px; }
+.chart-wrap canvas { width: 100% !important; min-height: 260px; }
 
 /* ─── PAGINATION ─── */
 .pagination .page-link {

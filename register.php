@@ -68,6 +68,9 @@ if (is_post()) {
             $data['pekerjaan'], $data['penghasilan'], $data['username'], $hash,
             $ktpFile, $selfieFile,
         ]);
+        $newUserId = (int)$pdo->lastInsertId();
+        log_activity($newUserId, 'Registrasi anggota baru');
+        notify_admins('Pendaftaran anggota baru', 'Anggota ' . $data['nama'] . ' menunggu verifikasi.');
 
         set_flash('success', 'Pendaftaran berhasil! Akun Anda sedang menunggu verifikasi admin. Silakan login setelah disetujui.');
         redirect('/login.php');

@@ -6,6 +6,8 @@ require_user();
 $user = current_user();
 $pdo = db();
 $errors = [];
+sync_late_fines((int)$user['id']);
+sync_due_reminders((int)$user['id']);
 
 $stmt = $pdo->prepare("SELECT id, nomor_pinjaman FROM pinjaman WHERE user_id = ? AND status IN ('Disetujui', 'Dicairkan')");
 $stmt->execute([$user['id']]);
@@ -15,10 +17,28 @@ $angsuranList = [];
 if (!empty($pinjamanList)) {
     $loanIds = array_column($pinjamanList, 'id');
     $placeholders = implode(',', array_fill(0, count($loanIds), '?'));
-    $stmt = $pdo->prepare("SELECT a.id, a.angsuran_ke, a.nominal, a.pinjaman_id, p.nomor_pinjaman FROM angsuran a JOIN pinjaman p ON a.pinjaman_id = p.id WHERE a.status IN ('Belum dibayar', 'Ditolak') AND a.pinjaman_id IN ($placeholders)");
+    $stmt = $pdo->prepare("
+        SELECT a.id, a.angsuran_ke, a.nominal, a.pinjaman_id, a.jatuh_tempo, p.nomor_pinjaman, d.total_denda, d.status AS status_denda
+        FROM angsuran a
+        JOIN pinjaman p ON a.pinjaman_id = p.id
+        LEFT JOIN denda d ON d.angsuran_id = a.id AND d.status = 'Belum Dibayar'
+        WHERE a.status IN ('Belum dibayar', 'Ditolak') AND a.pinjaman_id IN ($placeholders)
+        ORDER BY a.jatuh_tempo ASC
+    ");
     $stmt->execute($loanIds);
     $angsuranList = $stmt->fetchAll();
 }
+
+$dendaStmt = $pdo->prepare("
+    SELECT d.*, a.angsuran_ke, p.nomor_pinjaman
+    FROM denda d
+    JOIN angsuran a ON a.id = d.angsuran_id
+    JOIN pinjaman p ON p.id = a.pinjaman_id
+    WHERE d.user_id = ? AND d.status = 'Belum Dibayar'
+    ORDER BY d.created_at DESC
+");
+$dendaStmt->execute([$user['id']]);
+$dendaList = $dendaStmt->fetchAll();
 
 if (is_post()) {
     $angsuranId = (int)($_POST['angsuran_id'] ?? 0);
@@ -50,6 +70,8 @@ if (is_post()) {
         } else {
             $stmt = $pdo->prepare("UPDATE angsuran SET tanggal_bayar = ?, bukti_transfer = ?, nominal = ?, status = 'Menunggu konfirmasi', keterangan = ? WHERE id = ?");
             $stmt->execute([$tanggal, $bukti, $nominal, $catatan, $angsuranId]);
+            log_activity((int)$user['id'], 'Membayar angsuran sebesar ' . format_rupiah($nominal));
+            notify_admins('Angsuran baru', $user['nama'] . ' mengunggah pembayaran angsuran sebesar ' . format_rupiah($nominal) . '.');
             set_flash('success', 'Pembayaran berhasil diupload. Menunggu konfirmasi admin.');
             redirect('/user/bayar-angsuran.php');
         }
@@ -60,6 +82,39 @@ $page_title = 'Pembayaran Angsuran';
 $role = 'user';
 ?>
 <?php require __DIR__ . '/../includes/dashboard_top.php'; ?>
+
+<?php if (!empty($dendaList)): ?>
+    <div class="panel mb-4">
+        <div class="panel-header">
+            <span class="panel-title"><i class="bi bi-receipt-cutoff me-2 text-red"></i>Denda Belum Dibayar</span>
+            <span style="font-size:.78rem;color:var(--text-muted)">Total <?= format_rupiah(array_sum(array_column($dendaList, 'total_denda'))); ?></span>
+        </div>
+        <div class="table-responsive panel-body p-0">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Pinjaman</th>
+                        <th>Angsuran</th>
+                        <th>Terlambat</th>
+                        <th>Denda</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($dendaList as $fine): ?>
+                        <tr>
+                            <td><?= e($fine['nomor_pinjaman']); ?></td>
+                            <td>Ke-<?= e($fine['angsuran_ke']); ?></td>
+                            <td><?= e($fine['jumlah_hari']); ?> hari</td>
+                            <td style="font-weight:700;color:var(--accent-red)"><?= format_rupiah($fine['total_denda']); ?></td>
+                            <td><span class="badge-status <?= status_badge_class($fine['status']); ?>"><?= e($fine['status']); ?></span></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+<?php endif; ?>
 
 <div class="form-section">
     <h4 class="mb-4">Upload Bukti Pembayaran</h4>
@@ -77,7 +132,7 @@ $role = 'user';
                     <option value="">Pilih angsuran</option>
                     <?php foreach ($angsuranList as $row): ?>
                         <option value="<?= e($row['id']); ?>">
-                            <?= e($row['nomor_pinjaman']); ?> - Angsuran <?= e($row['angsuran_ke']); ?> (<?= format_rupiah($row['nominal']); ?>)
+                            <?= e($row['nomor_pinjaman']); ?> - Angsuran <?= e($row['angsuran_ke']); ?> (<?= format_rupiah($row['nominal']); ?>)<?= !empty($row['total_denda']) ? ' + denda ' . format_rupiah($row['total_denda']) : ''; ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
