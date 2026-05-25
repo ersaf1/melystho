@@ -4,7 +4,6 @@ require_once __DIR__ . '/../config/helpers.php';
 require_user();
 
 $authUser = current_user();
-ensure_feature_tables();
 sync_late_fines((int)$authUser['id']);
 sync_due_reminders((int)$authUser['id']);
 
@@ -20,10 +19,17 @@ if (is_post()) {
     redirect('/user/notifikasi.php');
 }
 
-$pdo = db();
-$notificationsStmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY is_read ASC, created_at DESC");
-$notificationsStmt->execute([$authUser['id']]);
-$notifications = $notificationsStmt->fetchAll();
+$file = get_notifications_file((int)$authUser['id']);
+$notifications = [];
+if (file_exists($file)) {
+    $notifications = json_decode(file_get_contents($file), true) ?: [];
+}
+usort($notifications, function($a, $b) {
+    if ($a['is_read'] != $b['is_read']) {
+        return $a['is_read'] - $b['is_read'];
+    }
+    return strcmp($b['created_at'], $a['created_at']);
+});
 
 $page_title = 'Notifikasi';
 $role = 'user';

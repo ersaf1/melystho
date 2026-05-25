@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+@layer base {
+  body {
+    @apply bg-surface text-slate-100 font-body antialiased selection:bg-primary/30;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading tracking-tight;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl shadow-xl transition-all duration-300;
+  }
+
+  .glass-card:hover {
+    @apply border-white/20 bg-white/10;
+  }
+
+  .btn-primary {
+    @apply bg-primary hover:bg-primary-light text-white font-semibold py-2 px-6 rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg shadow-primary/20;
+  }
+
+  .btn-secondary {
+    @apply bg-surface-light hover:bg-surface border border-white/10 text-white font-semibold py-2 px-6 rounded-xl transition-all duration-300 transform active:scale-95;
+  }
+
+  .input-field {
+    @apply bg-surface-dark border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all duration-300;
+  }
+}
+
+/* Custom scrollbar for futuristic feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-surface-dark;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-primary/40 rounded-full hover:bg-primary/60 transition-colors;
+}

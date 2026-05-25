@@ -37,6 +37,13 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   overlayEl?.addEventListener('click', closeSidebar);
 
+  // Close sidebar on resize to desktop width
+  window.addEventListener('resize', () => {
+    if (window.innerWidth >= 992) {
+      closeSidebar();
+    }
+  });
+
   const currentPath = window.location.pathname;
   document.querySelectorAll('.sidebar-link').forEach(link => {
     if (link.getAttribute('href') === currentPath) {
@@ -225,8 +232,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.alert[data-auto-dismiss]').forEach(alert => {
     const delay = parseInt(alert.getAttribute('data-auto-dismiss'), 10) || 4000;
     setTimeout(() => {
-      const bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
-      bsAlert?.close();
+      if (typeof bootstrap !== 'undefined' && bootstrap.Alert) {
+        const bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
+        bsAlert?.close();
+      } else {
+        // Fallback: fade out and remove alert if Bootstrap JS didn't load
+        alert.style.transition = 'opacity 0.5s ease';
+        alert.style.opacity = '0';
+        setTimeout(() => alert.remove(), 500);
+      }
     }, delay);
   });
 
@@ -258,6 +272,50 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
+    });
+  });
+
+  // ─── DYNAMIC CURRENCY FORMATTING (RUPIAH THOUSANDS SEPARATOR) ───
+  const formatCurrency = (val) => {
+    const clean = val.toString().replace(/\D/g, '');
+    if (clean === '') return '';
+    return new Intl.NumberFormat('id-ID').format(parseInt(clean, 10));
+  };
+
+  const unformatCurrency = (str) => {
+    return str.replace(/\./g, '');
+  };
+
+  // Find and format all currency inputs
+  document.querySelectorAll('input[data-type="currency"]').forEach(input => {
+    // Format initial value if present
+    if (input.value) {
+      input.value = formatCurrency(input.value);
+    }
+
+    // Live formatting on input
+    input.addEventListener('input', (e) => {
+      const cursor = e.target.selectionStart;
+      const oldLen = e.target.value.length;
+      
+      const formatted = formatCurrency(e.target.value);
+      e.target.value = formatted;
+      
+      const newLen = formatted.length;
+      e.target.setSelectionRange(cursor + (newLen - oldLen), cursor + (newLen - oldLen));
+      
+      // Manually trigger change or input event on dependent fields if they have custom formulas
+      const event = new Event('input', { bubbles: true });
+      e.target.dispatchEvent(event);
+    });
+  });
+
+  // Intercept all form submits to strip out dots so PHP gets raw numbers
+  document.querySelectorAll('form').forEach(form => {
+    form.addEventListener('submit', () => {
+      form.querySelectorAll('input[data-type="currency"]').forEach(input => {
+        input.value = unformatCurrency(input.value);
+      });
     });
   });
 });

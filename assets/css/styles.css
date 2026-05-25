@@ -682,7 +682,7 @@ a { transition: var(--transition); }
   background: rgba(0,0,0,.45);
   z-index: 1039;
 }
-.sidebar-overlay.active { display: block; }
+/* .sidebar-overlay.active is moved to mobile media query below */
 
 /* ─── MAIN CONTENT AREA ─── */
 .app-main {
@@ -788,7 +788,7 @@ a { transition: var(--transition); }
 .app-content {
   flex: 1;
   padding: 1.75rem;
-  max-width: 1400px;
+  max-width: 100%;
 }
 .page-header {
   display: flex;
@@ -1283,6 +1283,7 @@ a { transition: var(--transition); }
   }
   .app-main { margin-left: 0; }
   .topbar-toggle { display: flex; }
+  .sidebar-overlay.active { display: block; }
 }
 
 @media (max-width: 767px) {

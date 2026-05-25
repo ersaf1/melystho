@@ -50,12 +50,12 @@ function load_report(PDO $pdo, string $type, string $start, string $end, string 
     if ($type === 'anggota') {
         report_period_filter('DATE(created_at)', $conditions, $params, $start, $end, $month, $year);
         if ($status !== '') {
-            $conditions[] = 'status_verifikasi = ?';
+            $conditions[] = 'status = ?';
             $params[] = $status;
         }
         $where = $conditions ? 'WHERE role = ? AND ' . implode(' AND ', $conditions) : 'WHERE role = ?';
         array_unshift($params, 'user');
-        $stmt = $pdo->prepare("SELECT nama, nik, email, no_hp, status_verifikasi, created_at FROM users $where ORDER BY created_at DESC");
+        $stmt = $pdo->prepare("SELECT nama, nik, email, no_tlp AS no_hp, status AS status_verifikasi, created_at FROM anggota $where ORDER BY created_at DESC");
         $stmt->execute($params);
         return [
             'title' => 'Laporan Anggota',
@@ -72,22 +72,22 @@ function load_report(PDO $pdo, string $type, string $start, string $end, string 
     }
 
     if ($type === 'simpanan') {
-        report_period_filter('s.tanggal_transaksi', $conditions, $params, $start, $end, $month, $year);
+        report_period_filter('s.tgl_simpanan', $conditions, $params, $start, $end, $month, $year);
         if ($status !== '') {
             $conditions[] = 's.status = ?';
             $params[] = $status;
         }
         if ($userId > 0) {
-            $conditions[] = 's.user_id = ?';
+            $conditions[] = 's.id_anggota = ?';
             $params[] = $userId;
         }
         $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
         $stmt = $pdo->prepare("
-            SELECT s.tanggal_transaksi, u.nama, s.jenis_simpanan, s.nominal, s.status
+            SELECT s.tgl_simpanan AS tanggal_transaksi, u.nama, s.nm_simpanan AS jenis_simpanan, s.besar_simpanan AS nominal, s.status
             FROM simpanan s
-            JOIN users u ON u.id = s.user_id
+            JOIN anggota u ON u.id_anggota = s.id_anggota
             $where
-            ORDER BY s.tanggal_transaksi DESC
+            ORDER BY s.tgl_simpanan DESC
         ");
         $stmt->execute($params);
         return [
@@ -104,22 +104,22 @@ function load_report(PDO $pdo, string $type, string $start, string $end, string 
     }
 
     if ($type === 'pinjaman') {
-        report_period_filter('p.tanggal_pengajuan', $conditions, $params, $start, $end, $month, $year);
+        report_period_filter('p.tgl_pengajuan_pinjaman', $conditions, $params, $start, $end, $month, $year);
         if ($status !== '') {
             $conditions[] = 'p.status = ?';
             $params[] = $status;
         }
         if ($userId > 0) {
-            $conditions[] = 'p.user_id = ?';
+            $conditions[] = 'p.id_anggota = ?';
             $params[] = $userId;
         }
         $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
         $stmt = $pdo->prepare("
-            SELECT p.nomor_pinjaman, u.nama, p.nominal, p.tenor, p.status, p.tanggal_pengajuan
+            SELECT p.nama_pinjaman AS nomor_pinjaman, u.nama, p.besar_pinjaman AS nominal, p.tenor, p.status, p.tgl_pengajuan_pinjaman AS tanggal_pengajuan
             FROM pinjaman p
-            JOIN users u ON u.id = p.user_id
+            JOIN anggota u ON u.id_anggota = p.id_anggota
             $where
-            ORDER BY p.tanggal_pengajuan DESC
+            ORDER BY p.tgl_pengajuan_pinjaman DESC
         ");
         $stmt->execute($params);
         return [
@@ -136,23 +136,24 @@ function load_report(PDO $pdo, string $type, string $start, string $end, string 
         ];
     }
 
-    report_period_filter('COALESCE(a.tanggal_bayar, a.jatuh_tempo)', $conditions, $params, $start, $end, $month, $year);
+    report_period_filter('COALESCE(a.tgl_pembayaran, da.tgl_jatuh_tempo)', $conditions, $params, $start, $end, $month, $year);
     if ($status !== '') {
         $conditions[] = 'a.status = ?';
         $params[] = $status;
     }
     if ($userId > 0) {
-        $conditions[] = 'p.user_id = ?';
+        $conditions[] = 'a.id_anggota = ?';
         $params[] = $userId;
     }
     $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
     $stmt = $pdo->prepare("
-        SELECT p.nomor_pinjaman, u.nama, a.angsuran_ke, a.jatuh_tempo, a.tanggal_bayar, a.nominal, a.status
+        SELECT p.nama_pinjaman AS nomor_pinjaman, u.nama, a.angsuran_ke, da.tgl_jatuh_tempo AS jatuh_tempo, a.tgl_pembayaran AS tanggal_bayar, a.besar_angsuran AS nominal, a.status
         FROM angsuran a
-        JOIN pinjaman p ON p.id = a.pinjaman_id
-        JOIN users u ON u.id = p.user_id
+        JOIN detail_angsuran da ON a.id_angsuran = da.id_angsuran
+        JOIN anggota u ON a.id_anggota = u.id_anggota
+        JOIN pinjaman p ON p.id_pinjaman = a.id_pinjaman
         $where
-        ORDER BY COALESCE(a.tanggal_bayar, a.jatuh_tempo) DESC
+        ORDER BY COALESCE(a.tgl_pembayaran, da.tgl_jatuh_tempo) DESC
     ");
     $stmt->execute($params);
     return [
@@ -239,7 +240,7 @@ if (isset($_GET['export'])) {
     }
 }
 
-$users = $pdo->query("SELECT id, nama FROM users WHERE role = 'user' ORDER BY nama ASC")->fetchAll();
+$users = $pdo->query("SELECT id_anggota AS id, nama FROM anggota WHERE role = 'user' ORDER BY nama ASC")->fetchAll();
 $currentYear = (int)date('Y');
 $exportBase = $_GET;
 $exportBase['type'] = $type;
@@ -259,8 +260,8 @@ $role = 'admin';
         <p class="page-sub">Filter laporan dan export ke PDF atau Excel.</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
-        <a href="/admin/laporan.php?<?= e(http_build_query($pdfQuery)); ?>" class="btn btn-outline-danger"><i class="bi bi-filetype-pdf me-1"></i>Export PDF</a>
-        <a href="/admin/laporan.php?<?= e(http_build_query($excelQuery)); ?>" class="btn btn-outline-success"><i class="bi bi-file-earmark-excel me-1"></i>Export Excel</a>
+        <a href="<?= base_url('/admin/laporan.php?' . e(http_build_query($pdfQuery))) ?>" class="btn btn-outline-danger"><i class="bi bi-filetype-pdf me-1"></i>Export PDF</a>
+        <a href="<?= base_url('/admin/laporan.php?' . e(http_build_query($excelQuery))) ?>" class="btn btn-outline-success"><i class="bi bi-file-earmark-excel me-1"></i>Export Excel</a>
     </div>
 </div>
 
@@ -294,7 +295,7 @@ $role = 'admin';
         </div>
         <div class="col-md-3 col-xl-2">
             <label class="form-label">Tanggal Selesai</label>
-            <input type="date" name="end" class="form-control" value="<?= e($end); ?>">
+            <input type="date" name="end" class="form-control" value="<?= e($start); ?>">
         </div>
         <div class="col-md-3 col-xl-2">
             <label class="form-label">Status</label>
@@ -325,7 +326,7 @@ $role = 'admin';
             <button class="btn btn-outline-primary"><i class="bi bi-funnel me-1"></i>Filter</button>
         </div>
         <div class="col-md-4 col-xl-2 d-grid">
-            <a href="/admin/laporan.php" class="btn btn-outline-secondary">Reset</a>
+            <a href="<?= base_url('/admin/laporan.php') ?>" class="btn btn-outline-secondary">Reset</a>
         </div>
     </form>
 </div>

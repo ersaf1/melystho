@@ -4,26 +4,35 @@ require_once __DIR__ . '/../config/helpers.php';
 require_user();
 
 $authUser = current_user();
-ensure_feature_tables();
-
 $q = trim($_GET['q'] ?? '');
-$params = [$authUser['id']];
-$where = 'WHERE l.user_id = ?';
-if ($q !== '') {
-    $where .= ' AND l.aktivitas LIKE ?';
-    $params[] = "%$q%";
+
+$logFile = __DIR__ . '/../logs/activity.log';
+$logs = [];
+if (file_exists($logFile)) {
+    $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        if (preg_match('/^\[(.*?)\]\s+\[User\s+ID:\s+(\d+)\]\s+(.*)$/', $line, $matches)) {
+            $created_at = $matches[1];
+            $user_id = (int)$matches[2];
+            $aktivitas = $matches[3];
+            
+            if ($user_id !== (int)$authUser['id']) {
+                continue;
+            }
+            if ($q !== '' && stripos($aktivitas, $q) === false) {
+                continue;
+            }
+            
+            $logs[] = [
+                'created_at' => $created_at,
+                'aktivitas' => $aktivitas
+            ];
+        }
+    }
 }
 
-$pdo = db();
-$stmt = $pdo->prepare("
-    SELECT l.*
-    FROM activity_logs l
-    $where
-    ORDER BY l.created_at DESC
-    LIMIT 200
-");
-$stmt->execute($params);
-$logs = $stmt->fetchAll();
+usort($logs, fn($a, $b) => strcmp($b['created_at'], $a['created_at']));
+$logs = array_slice($logs, 0, 200);
 
 $page_title = 'Riwayat Aktivitas';
 $role = 'user';

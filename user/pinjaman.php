@@ -5,11 +5,11 @@ require_user();
 
 $user = current_user();
 $pdo = db();
-$stmt = $pdo->prepare("SELECT * FROM pinjaman WHERE user_id = ? ORDER BY tanggal_pengajuan DESC");
+$stmt = $pdo->prepare("SELECT *, id_pinjaman AS id, nama_pinjaman AS nomor_pinjaman, besar_pinjaman AS nominal, tgl_pengajuan_pinjaman AS tanggal_pengajuan FROM pinjaman WHERE id_anggota = ? ORDER BY tgl_pengajuan_pinjaman DESC");
 $stmt->execute([$user['id']]);
 $pinjaman = $stmt->fetchAll();
 
-$canApply = in_array($user['status_verifikasi'], ['Disetujui', 'Aktif'], true);
+$canApply = in_array($user['status'], ['Disetujui', 'Aktif'], true);
 $page_title = 'Pinjaman';
 $role = 'user';
 ?>
@@ -17,7 +17,7 @@ $role = 'user';
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4>Daftar Pinjaman</h4>
-    <a href="/user/ajukan-pinjaman.php" class="btn btn-primary <?= $canApply ? '' : 'disabled'; ?>" <?= $canApply ? '' : 'aria-disabled="true" tabindex="-1"'; ?>>Ajukan Pinjaman</a>
+    <a href="<?= base_url('/user/ajukan-pinjaman.php') ?>" class="btn btn-primary <?= $canApply ? '' : 'disabled'; ?>" <?= $canApply ? '' : 'aria-disabled="true" tabindex="-1"'; ?>>Ajukan Pinjaman</a>
 </div>
 
 <?php if (!$canApply): ?>
@@ -53,7 +53,7 @@ $role = 'user';
                     <td><?= format_rupiah($item['nominal']); ?></td>
                     <td><?= e($item['tenor']); ?> bulan</td>
                     <td><span class="badge-status <?= status_badge_class($item['status']); ?>"><?= e($item['status']); ?></span></td>
-                    <td><a href="/user/detail-pinjaman.php?id=<?= e($item['id']); ?>" class="btn btn-sm btn-outline-primary">Detail</a></td>
+                    <td><a href="<?= base_url('/user/detail-pinjaman.php?id=' . e($item['id'])) ?>" class="btn btn-sm btn-outline-primary">Detail</a></td>
                 </tr>
             <?php endforeach; ?>
             <?php if (empty($pinjaman)): ?>

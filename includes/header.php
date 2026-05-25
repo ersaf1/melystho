@@ -19,6 +19,6 @@ $page_title = $page_title ?? $config['app']['name'];
     <!-- Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <!-- Custom CSS -->
-    <link href="/assets/css/styles.css" rel="stylesheet">
+    <link href="<?= base_url('assets/css/styles.css'); ?>" rel="stylesheet">
 </head>
 <body>

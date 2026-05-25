@@ -3,7 +3,6 @@ require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_admin();
 
-ensure_feature_tables();
 $pdo = db();
 
 $q = trim($_GET['q'] ?? '');
@@ -11,36 +10,55 @@ $userId = (int)($_GET['user_id'] ?? 0);
 $start = $_GET['start'] ?? '';
 $end = $_GET['end'] ?? '';
 
-$conditions = [];
-$params = [];
-if ($q !== '') {
-    $conditions[] = '(l.aktivitas LIKE ? OR u.nama LIKE ? OR u.username LIKE ?)';
-    $params[] = "%$q%";
-    $params[] = "%$q%";
-    $params[] = "%$q%";
-}
-if ($userId > 0) {
-    $conditions[] = 'l.user_id = ?';
-    $params[] = $userId;
-}
-if ($start !== '' && $end !== '') {
-    $conditions[] = 'DATE(l.created_at) BETWEEN ? AND ?';
-    $params[] = $start;
-    $params[] = $end;
+$logFile = __DIR__ . '/../logs/activity.log';
+$logs = [];
+if (file_exists($logFile)) {
+    $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        if (preg_match('/^\[(.*?)\]\s+\[User\s+ID:\s+(\d+)\]\s+(.*)$/', $line, $matches)) {
+            $created_at = $matches[1];
+            $user_id = (int)$matches[2];
+            $aktivitas = $matches[3];
+            
+            static $userCache = [];
+            if (!isset($userCache[$user_id])) {
+                $stmt = $pdo->prepare("SELECT nama, username, role FROM petugas_koperasi WHERE id_petugas = ? UNION SELECT nama, username, role FROM anggota WHERE id_anggota = ?");
+                $stmt->execute([$user_id, $user_id]);
+                $u = $stmt->fetch();
+                $userCache[$user_id] = $u ?: ['nama' => 'User ID ' . $user_id, 'username' => 'user_' . $user_id, 'role' => 'user'];
+            }
+            
+            $u = $userCache[$user_id];
+            
+            if ($q !== '' && stripos($aktivitas, $q) === false && stripos($u['nama'], $q) === false && stripos($u['username'], $q) === false) {
+                continue;
+            }
+            if ($userId > 0 && $user_id !== $userId) {
+                continue;
+            }
+            if ($start !== '' && $end !== '') {
+                $dateOnly = date('Y-m-d', strtotime($created_at));
+                if ($dateOnly < $start || $dateOnly > $end) {
+                    continue;
+                }
+            }
+            
+            $logs[] = [
+                'created_at' => $created_at,
+                'user_id' => $user_id,
+                'nama' => $u['nama'],
+                'username' => $u['username'],
+                'role' => $u['role'],
+                'aktivitas' => $aktivitas
+            ];
+        }
+    }
 }
 
-$where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
-$stmt = $pdo->prepare("
-    SELECT l.*, u.nama, u.username, u.role
-    FROM activity_logs l
-    JOIN users u ON u.id = l.user_id
-    $where
-    ORDER BY l.created_at DESC
-    LIMIT 300
-");
-$stmt->execute($params);
-$logs = $stmt->fetchAll();
-$users = $pdo->query("SELECT id, nama FROM users ORDER BY nama ASC")->fetchAll();
+usort($logs, fn($a, $b) => strcmp($b['created_at'], $a['created_at']));
+$logs = array_slice($logs, 0, 300);
+
+$users = $pdo->query("SELECT id_petugas AS id, nama FROM petugas_koperasi UNION SELECT id_anggota AS id, nama FROM anggota ORDER BY nama ASC")->fetchAll();
 
 $page_title = 'Audit Log';
 $role = 'admin';

@@ -5,9 +5,33 @@ function e($value): string
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+function base_url(string $path = ''): string
+{
+    static $base;
+    if ($base === null) {
+        $config = require __DIR__ . '/config.php';
+        $base = $config['app']['base_url'];
+        if ($base === '') {
+            $docRoot = str_replace('\\', '/', $_SERVER['DOCUMENT_ROOT'] ?? '');
+            $projectRoot = str_replace('\\', '/', dirname(__DIR__));
+            if ($docRoot !== '' && strpos($projectRoot, $docRoot) === 0) {
+                $sub = substr($projectRoot, strlen($docRoot));
+                $base = ($sub === '') ? '' : '/' . ltrim($sub, '/');
+            } else {
+                $base = '';
+            }
+        }
+    }
+    return $base . '/' . ltrim($path, '/');
+}
+
 function redirect(string $url): void
 {
-    header("Location: {$url}");
+    if (strpos($url, 'http') === 0) {
+        header("Location: {$url}");
+    } else {
+        header("Location: " . base_url($url));
+    }
     exit;
 }
 
@@ -67,25 +91,36 @@ function upload_file(array $file, string $targetDir, array $allowedMime, int $ma
 
 function get_setting(string $name, $default = null)
 {
-    $pdo = db();
-    $stmt = $pdo->prepare("SELECT value FROM settings WHERE name = ?");
-    $stmt->execute([$name]);
-    $row = $stmt->fetch();
-    return $row ? $row['value'] : $default;
+    static $settings;
+    if ($settings === null) {
+        $file = __DIR__ . '/settings.php';
+        if (file_exists($file)) {
+            $settings = require $file;
+        } else {
+            $settings = [];
+        }
+    }
+    return isset($settings[$name]) ? $settings[$name] : $default;
 }
 
 function set_setting(string $name, $value): void
 {
-    $pdo = db();
-    $stmt = $pdo->prepare("INSERT INTO settings (name, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)");
-    $stmt->execute([$name, $value]);
+    $file = __DIR__ . '/settings.php';
+    $settings = [];
+    if (file_exists($file)) {
+        $settings = require $file;
+    }
+    $settings[$name] = $value;
+    
+    $content = "<?php\n\nreturn " . var_export($settings, true) . ";\n";
+    file_put_contents($file, $content);
 }
 
 function generate_loan_number(): string
 {
     $prefix = 'PJ-' . date('Ym') . '-';
     $pdo = db();
-    $stmt = $pdo->prepare("SELECT COUNT(*) AS total FROM pinjaman WHERE nomor_pinjaman LIKE ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) AS total FROM pinjaman WHERE nama_pinjaman LIKE ?");
     $stmt->execute([$prefix . '%']);
     $total = (int)$stmt->fetch()['total'] + 1;
     return $prefix . str_pad((string)$total, 4, '0', STR_PAD_LEFT);

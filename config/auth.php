@@ -13,9 +13,16 @@ function current_user(): ?array
         return null;
     }
     $pdo = db();
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-    $stmt->execute([$_SESSION['user_id']]);
-    $user = $stmt->fetch();
+    $role = $_SESSION['role'] ?? 'user';
+    if ($role === 'admin') {
+        $stmt = $pdo->prepare("SELECT *, id_petugas AS id, 'Disetujui' AS status_verifikasi FROM petugas_koperasi WHERE id_petugas = ?");
+        $stmt->execute([$_SESSION['user_id']]);
+        $user = $stmt->fetch();
+    } else {
+        $stmt = $pdo->prepare("SELECT *, id_anggota AS id, status AS status_verifikasi FROM anggota WHERE id_anggota = ?");
+        $stmt->execute([$_SESSION['user_id']]);
+        $user = $stmt->fetch();
+    }
     return $user ?: null;
 }
 
@@ -41,3 +48,4 @@ function require_user(): void
         redirect('/admin/dashboard.php');
     }
 }
+

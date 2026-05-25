@@ -8,7 +8,7 @@ $config = $config ?? (require __DIR__ . '/../config/config.php');
 ?>
 <nav class="navbar navbar-public navbar-expand-lg">
     <div class="container">
-        <a class="navbar-brand" href="/">
+        <a class="navbar-brand" href="<?= base_url('/') ?>">
             <span class="navbar-brand-icon"><i class="bi bi-bank2"></i></span>
             <span><?= e($config['app']['name']); ?></span>
         </a>
@@ -17,26 +17,26 @@ $config = $config ?? (require __DIR__ . '/../config/config.php');
         </button>
         <div class="collapse navbar-collapse" id="navbarMain">
             <ul class="navbar-nav mx-auto gap-1">
-                <li class="nav-item"><a class="nav-link" href="/">Beranda</a></li>
-                <li class="nav-item"><a class="nav-link" href="/#syarat">Syarat Anggota</a></li>
-                <li class="nav-item"><a class="nav-link" href="/#produk">Produk</a></li>
-                <li class="nav-item"><a class="nav-link" href="/#keunggulan">Keunggulan</a></li>
-                <li class="nav-item"><a class="nav-link" href="/#kontak">Kontak</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?= base_url('/') ?>">Beranda</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?= base_url('/') ?>#syarat">Syarat Anggota</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?= base_url('/') ?>#produk">Produk</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?= base_url('/') ?>#keunggulan">Keunggulan</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?= base_url('/') ?>#kontak">Kontak</a></li>
             </ul>
             <div class="d-flex align-items-center gap-2 mt-2 mt-lg-0">
                 <?php if ($isLoggedIn): ?>
-                    <a href="<?= $role === 'admin' ? '/admin/dashboard.php' : '/user/dashboard.php'; ?>"
+                    <a href="<?= $role === 'admin' ? base_url('/admin/dashboard.php') : base_url('/user/dashboard.php'); ?>"
                        class="btn btn-nav-login">
                         <i class="bi bi-grid me-1"></i>Dashboard
                     </a>
-                    <a href="/logout.php" class="btn btn-nav-register">
+                    <a href="<?= base_url('/logout.php') ?>" class="btn btn-nav-register">
                         <i class="bi bi-box-arrow-right me-1"></i>Logout
                     </a>
                 <?php else: ?>
-                    <a href="/login.php" class="btn btn-nav-login" id="navLoginBtn">
+                    <a href="<?= base_url('/login.php') ?>" class="btn btn-nav-login" id="navLoginBtn">
                         <i class="bi bi-person me-1"></i>Login
                     </a>
-                    <a href="/register.php" class="btn btn-nav-register" id="navRegisterBtn">
+                    <a href="<?= base_url('/register.php') ?>" class="btn btn-nav-register" id="navRegisterBtn">
                         <i class="bi bi-person-plus me-1"></i>Daftar Anggota
                     </a>
                 <?php endif; ?>

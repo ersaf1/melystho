@@ -21,7 +21,7 @@ if (is_post()) {
         $errors[] = 'Format email tidak valid.';
     }
 
-    $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
+    $stmt = $pdo->prepare("SELECT id_anggota FROM anggota WHERE email = ? AND id_anggota != ?");
     $stmt->execute([$email, $user['id']]);
     if ($stmt->fetch()) {
         $errors[] = 'Email sudah digunakan.';
@@ -29,13 +29,13 @@ if (is_post()) {
 
     if (empty($errors)) {
         $params = [$nama, $alamat, $no_hp, $email, $pekerjaan, $user['id']];
-        $sql = "UPDATE users SET nama = ?, alamat = ?, no_hp = ?, email = ?, pekerjaan = ?, updated_at = NOW()";
+        $sql = "UPDATE anggota SET nama = ?, alamat = ?, no_tlp = ?, email = ?, ket = ?, updated_at = NOW()";
         if ($password !== '') {
             $hash = password_hash($password, PASSWORD_DEFAULT);
             $sql .= ", password = ?";
             $params = [$nama, $alamat, $no_hp, $email, $pekerjaan, $hash, $user['id']];
         }
-        $sql .= " WHERE id = ?";
+        $sql .= " WHERE id_anggota = ?";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         log_activity((int)$user['id'], 'Memperbarui profil');

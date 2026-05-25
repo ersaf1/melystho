@@ -6,13 +6,13 @@ require_admin();
 $pdo = db();
 sync_late_fines();
 
-$totalAnggota        = (int)$pdo->query("SELECT COUNT(*) AS total FROM users WHERE role = 'user'")->fetch()['total'];
-$menungguVerif       = (int)$pdo->query("SELECT COUNT(*) AS total FROM users WHERE role = 'user' AND status_verifikasi = 'Menunggu Verifikasi'")->fetch()['total'];
-$totalSimpanan       = (float)$pdo->query("SELECT SUM(nominal) AS total FROM simpanan WHERE status = 'Diterima'")->fetch()['total'];
-$totalPinjamanAktif  = (float)$pdo->query("SELECT SUM(nominal) AS total FROM pinjaman WHERE status IN ('Disetujui', 'Dicairkan')")->fetch()['total'];
+$totalAnggota        = (int)$pdo->query("SELECT COUNT(*) AS total FROM anggota WHERE role = 'user'")->fetch()['total'];
+$menungguVerif       = (int)$pdo->query("SELECT COUNT(*) AS total FROM anggota WHERE role = 'user' AND status = 'Menunggu Verifikasi'")->fetch()['total'];
+$totalSimpanan       = (float)$pdo->query("SELECT SUM(besar_simpanan) AS total FROM simpanan WHERE status = 'Diterima'")->fetch()['total'];
+$totalPinjamanAktif  = (float)$pdo->query("SELECT SUM(besar_pinjaman) AS total FROM pinjaman WHERE status IN ('Disetujui', 'Dicairkan')")->fetch()['total'];
 $totalPinjamanMenunggu = (int)$pdo->query("SELECT COUNT(*) AS total FROM pinjaman WHERE status = 'Menunggu review'")->fetch()['total'];
-$totalAngsuranBulan  = (float)$pdo->query("SELECT SUM(nominal) AS total FROM angsuran WHERE status = 'Diterima' AND MONTH(tanggal_bayar) = MONTH(CURDATE()) AND YEAR(tanggal_bayar) = YEAR(CURDATE())")->fetch()['total'];
-$pinjamanJatuhTempo  = (int)$pdo->query("SELECT COUNT(*) AS total FROM angsuran a JOIN pinjaman p ON a.pinjaman_id = p.id WHERE a.status != 'Diterima' AND a.jatuh_tempo < CURDATE() AND p.status IN ('Disetujui', 'Dicairkan')")->fetch()['total'];
+$totalAngsuranBulan  = (float)$pdo->query("SELECT SUM(besar_angsuran) AS total FROM angsuran WHERE status = 'Diterima' AND MONTH(tgl_pembayaran) = MONTH(CURDATE()) AND YEAR(tgl_pembayaran) = YEAR(CURDATE())")->fetch()['total'];
+$pinjamanJatuhTempo  = (int)$pdo->query("SELECT COUNT(*) AS total FROM angsuran a JOIN detail_angsuran da ON a.id_angsuran = da.id_angsuran JOIN pinjaman p ON a.id_pinjaman = p.id_pinjaman WHERE a.status != 'Diterima' AND da.tgl_jatuh_tempo < CURDATE() AND p.status IN ('Disetujui', 'Dicairkan')")->fetch()['total'];
 $totalDendaBelumBayar = unpaid_fines_total();
 
 // Chart data
@@ -22,11 +22,11 @@ for ($i = 5; $i >= 0; $i--) {
 }
 $chartData = [];
 foreach ($months as $month) {
-    $s = $pdo->prepare("SELECT SUM(nominal) AS total FROM simpanan WHERE status = 'Diterima' AND DATE_FORMAT(tanggal_transaksi, '%Y-%m') = ?");
+    $s = $pdo->prepare("SELECT SUM(besar_simpanan) AS total FROM simpanan WHERE status = 'Diterima' AND DATE_FORMAT(tgl_simpanan, '%Y-%m') = ?");
     $s->execute([$month]);
-    $p = $pdo->prepare("SELECT SUM(nominal) AS total FROM pinjaman WHERE status IN ('Disetujui', 'Dicairkan') AND DATE_FORMAT(tanggal_disetujui, '%Y-%m') = ?");
+    $p = $pdo->prepare("SELECT SUM(besar_pinjaman) AS total FROM pinjaman WHERE status IN ('Disetujui', 'Dicairkan') AND DATE_FORMAT(tgl_acc_peminjam, '%Y-%m') = ?");
     $p->execute([$month]);
-    $a = $pdo->prepare("SELECT SUM(nominal) AS total FROM angsuran WHERE status = 'Diterima' AND DATE_FORMAT(tanggal_bayar, '%Y-%m') = ?");
+    $a = $pdo->prepare("SELECT SUM(besar_angsuran) AS total FROM angsuran WHERE status = 'Diterima' AND DATE_FORMAT(tgl_pembayaran, '%Y-%m') = ?");
     $a->execute([$month]);
     $chartData[] = [
         'month'    => $month,
@@ -41,10 +41,10 @@ $pinjamanSeries = array_map(fn($d) => $d['pinjaman'], $chartData);
 $angsuranSeries = array_map(fn($d) => $d['angsuran'], $chartData);
 
 // Recent members waiting
-$pendingAnggota = $pdo->query("SELECT id, nama, email, created_at FROM users WHERE role='user' AND status_verifikasi='Menunggu Verifikasi' ORDER BY created_at DESC LIMIT 5")->fetchAll();
+$pendingAnggota = $pdo->query("SELECT id_anggota AS id, nama, email, created_at FROM anggota WHERE role='user' AND status='Menunggu Verifikasi' ORDER BY created_at DESC LIMIT 5")->fetchAll();
 
 // Recent pinjaman waiting
-$pendingPinjaman = $pdo->query("SELECT p.*, u.nama FROM pinjaman p JOIN users u ON p.user_id = u.id WHERE p.status = 'Menunggu review' ORDER BY p.created_at DESC LIMIT 5")->fetchAll();
+$pendingPinjaman = $pdo->query("SELECT p.*, p.id_pinjaman AS id, p.nama_pinjaman AS nomor_pinjaman, p.besar_pinjaman AS nominal, p.created_at, u.nama FROM pinjaman p JOIN anggota u ON p.id_anggota = u.id_anggota WHERE p.status = 'Menunggu review' ORDER BY p.created_at DESC LIMIT 5")->fetchAll();
 
 $page_title = 'Dashboard Admin';
 $role = 'admin';
@@ -71,7 +71,7 @@ function badgeClass($status) {
         <h1 class="page-title">Dashboard Admin</h1>
         <p class="page-sub">Ringkasan operasional koperasi per <?= date('d F Y'); ?></p>
     </div>
-    <a href="/admin/laporan.php" class="btn-primary-custom" id="laporanBtn">
+    <a href="<?= base_url('/admin/laporan.php') ?>" class="btn-primary-custom" id="laporanBtn">
         <i class="bi bi-file-earmark-bar-graph"></i>Lihat Laporan
     </a>
 </div>
@@ -94,7 +94,7 @@ function badgeClass($status) {
             <div class="stat-info">
                 <div class="stat-label">Menunggu Verifikasi</div>
                 <div class="stat-value"><?= $menungguVerif; ?></div>
-                <div class="stat-trend"><a href="/admin/anggota.php" style="color:var(--accent-amber);font-size:.75rem">Proses sekarang →</a></div>
+                <div class="stat-trend"><a href="<?= base_url('/admin/anggota.php') ?>" style="color:var(--accent-amber);font-size:.75rem">Proses sekarang →</a></div>
             </div>
         </div>
     </div>
@@ -128,7 +128,7 @@ function badgeClass($status) {
             <div class="stat-info">
                 <div class="stat-label">Pinjaman Menunggu</div>
                 <div class="stat-value"><?= $totalPinjamanMenunggu; ?></div>
-                <div class="stat-trend"><a href="/admin/pinjaman.php" style="color:var(--accent-amber);font-size:.75rem">Tinjau sekarang →</a></div>
+                <div class="stat-trend"><a href="<?= base_url('/admin/pinjaman.php') ?>" style="color:var(--accent-amber);font-size:.75rem">Tinjau sekarang →</a></div>
             </div>
         </div>
     </div>
@@ -158,7 +158,7 @@ function badgeClass($status) {
             <div class="stat-info">
                 <div class="stat-label">Denda Belum Dibayar</div>
                 <div class="stat-value sm"><?= format_rupiah($totalDendaBelumBayar); ?></div>
-                <div class="stat-trend"><a href="/admin/angsuran.php#denda" style="color:var(--accent-red);font-size:.75rem">Lihat denda -></a></div>
+                <div class="stat-trend"><a href="<?= base_url('/admin/angsuran.php') ?>#denda" style="color:var(--accent-red);font-size:.75rem">Lihat denda -></a></div>
             </div>
         </div>
     </div>
@@ -184,7 +184,7 @@ function badgeClass($status) {
         <div class="panel h-100">
             <div class="panel-header">
                 <span class="panel-title"><i class="bi bi-person-check me-2" style="color:var(--accent-amber)"></i>Menunggu Verifikasi</span>
-                <a href="/admin/anggota.php" style="font-size:.75rem;color:var(--primary);font-weight:600;text-decoration:none">Semua →</a>
+                <a href="<?= base_url('/admin/anggota.php') ?>" style="font-size:.75rem;color:var(--primary);font-weight:600;text-decoration:none">Semua →</a>
             </div>
             <div class="table-responsive panel-body p-0">
                 <table class="data-table">
@@ -212,7 +212,7 @@ function badgeClass($status) {
                                     </td>
                                     <td style="font-size:.78rem;color:var(--text-muted)"><?= e(date('d/m/Y', strtotime($a['created_at']))); ?></td>
                                     <td>
-                                        <a href="/admin/detail-anggota.php?id=<?= $a['id']; ?>" class="btn-action view" title="Detail"><i class="bi bi-eye"></i></a>
+                                        <a href="<?= base_url('/admin/detail-anggota.php?id=' . $a['id']) ?>" class="btn-action view" title="Detail"><i class="bi bi-eye"></i></a>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -228,7 +228,7 @@ function badgeClass($status) {
 <div class="panel">
     <div class="panel-header">
         <span class="panel-title"><i class="bi bi-send-exclamation me-2" style="color:var(--accent-amber)"></i>Pengajuan Pinjaman Terbaru</span>
-        <a href="/admin/pinjaman.php" style="font-size:.75rem;color:var(--primary);font-weight:600;text-decoration:none">Lihat Semua →</a>
+        <a href="<?= base_url('/admin/pinjaman.php') ?>" style="font-size:.75rem;color:var(--primary);font-weight:600;text-decoration:none">Lihat Semua →</a>
     </div>
     <div class="table-responsive panel-body p-0">
         <table class="data-table">
@@ -261,7 +261,7 @@ function badgeClass($status) {
                             <td><span class="badge-status <?= badgeClass($p['status']); ?>"><?= e($p['status']); ?></span></td>
                             <td style="font-size:.78rem;color:var(--text-muted)"><?= e(date('d/m/Y', strtotime($p['created_at']))); ?></td>
                             <td>
-                                <a href="/admin/detail-pinjaman.php?id=<?= $p['id']; ?>" class="btn-action view" title="Detail"><i class="bi bi-eye"></i></a>
+                                <a href="<?= base_url('/admin/detail-pinjaman.php?id=' . $p['id']) ?>" class="btn-action view" title="Detail"><i class="bi bi-eye"></i></a>
                             </td>
                         </tr>
                     <?php endforeach; ?>

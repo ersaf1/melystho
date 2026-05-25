@@ -6,7 +6,7 @@ require_admin();
 $pdo = db();
 $authUser = current_user();
 $id = (int)($_GET['id'] ?? 0);
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND role = 'user'");
+$stmt = $pdo->prepare("SELECT *, id_anggota AS id, no_tlp AS no_hp, status AS status_verifikasi, ket AS pekerjaan FROM anggota WHERE id_anggota = ? AND role = 'user'");
 $stmt->execute([$id]);
 $anggota = $stmt->fetch();
 if (!$anggota) {
@@ -35,7 +35,7 @@ if (is_post()) {
     }
 
     if (empty($errors)) {
-        $check = $pdo->prepare("SELECT id FROM users WHERE (nik = ? OR email = ?) AND id != ? LIMIT 1");
+        $check = $pdo->prepare("SELECT id_anggota FROM anggota WHERE (nik = ? OR email = ?) AND id_anggota != ? LIMIT 1");
         $check->execute([$data['nik'], $data['email'], $id]);
         if ($check->fetch()) {
             $errors[] = 'NIK atau email sudah digunakan anggota lain.';
@@ -43,7 +43,7 @@ if (is_post()) {
     }
 
     if (empty($errors)) {
-        $stmt = $pdo->prepare("UPDATE users SET nama = ?, nik = ?, alamat = ?, no_hp = ?, email = ?, pekerjaan = ?, status_verifikasi = ?, updated_at = NOW() WHERE id = ?");
+        $stmt = $pdo->prepare("UPDATE anggota SET nama = ?, nik = ?, alamat = ?, no_tlp = ?, email = ?, ket = ?, status = ?, updated_at = NOW() WHERE id_anggota = ?");
         $stmt->execute([
             $data['nama'],
             $data['nik'],
@@ -117,7 +117,7 @@ $role = 'admin';
             <div class="mb-3">
                 <small>Foto KTP</small>
                 <?php if (!empty($anggota['foto_ktp'])): ?>
-                    <img src="/uploads/ktp/<?= e($anggota['foto_ktp']); ?>" class="img-fluid rounded">
+                    <img src="<?= base_url('/uploads/ktp/' . e($anggota['foto_ktp'])) ?>" class="img-fluid rounded">
                 <?php else: ?>
                     <p class="text-muted">Tidak ada.</p>
                 <?php endif; ?>
@@ -125,7 +125,7 @@ $role = 'admin';
             <div>
                 <small>Foto Diri</small>
                 <?php if (!empty($anggota['foto_diri'])): ?>
-                    <img src="/uploads/diri/<?= e($anggota['foto_diri']); ?>" class="img-fluid rounded">
+                    <img src="<?= base_url('/uploads/diri/' . e($anggota['foto_diri'])) ?>" class="img-fluid rounded">
                 <?php else: ?>
                     <p class="text-muted">Tidak ada.</p>
                 <?php endif; ?>

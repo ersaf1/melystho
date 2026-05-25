@@ -24,12 +24,12 @@ $appName = e($config['app']['name']);
             <!-- Quick Links -->
             <div class="col-lg-2 col-md-3 col-6">
                 <h6>Navigasi</h6>
-                <a href="/">Beranda</a>
-                <a href="/#syarat">Syarat Anggota</a>
-                <a href="/#produk">Produk</a>
-                <a href="/#keunggulan">Keunggulan</a>
-                <a href="/register.php">Daftar Anggota</a>
-                <a href="/login.php">Login</a>
+                <a href="<?= base_url('/') ?>">Beranda</a>
+                <a href="<?= base_url('/') ?>#syarat">Syarat Anggota</a>
+                <a href="<?= base_url('/') ?>#produk">Produk</a>
+                <a href="<?= base_url('/') ?>#keunggulan">Keunggulan</a>
+                <a href="<?= base_url('/register.php') ?>">Daftar Anggota</a>
+                <a href="<?= base_url('/login.php') ?>">Login</a>
             </div>
 
             <!-- Products -->
@@ -75,6 +75,6 @@ $appName = e($config['app']['name']);
     <?= $extra_js; ?>
 <?php endif; ?>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="/assets/js/main.js"></script>
+<script src="<?= base_url('assets/js/main.js'); ?>"></script>
 </body>
 </html>

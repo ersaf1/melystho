@@ -21,20 +21,17 @@ if (is_post()) {
     if (in_array($action, ['confirm', 'reject'], true)) {
         $id = (int)($_POST['id'] ?? 0);
         $status = $action === 'confirm' ? 'Diterima' : 'Ditolak';
-        $stmt = $pdo->prepare("UPDATE angsuran SET status = ? WHERE id = ?");
+        $stmt = $pdo->prepare("UPDATE angsuran SET status = ? WHERE id_angsuran = ?");
         $stmt->execute([$status, $id]);
 
-        $row = $pdo->prepare("SELECT a.nominal, a.pinjaman_id, a.angsuran_ke, p.nomor_pinjaman FROM angsuran a JOIN pinjaman p ON p.id = a.pinjaman_id WHERE a.id = ?");
+        $row = $pdo->prepare("SELECT a.besar_angsuran AS nominal, a.id_anggota, a.angsuran_ke, p.nama_pinjaman AS nomor_pinjaman, p.id_pinjaman AS pinjaman_id FROM angsuran a JOIN pinjaman p ON p.id_pinjaman = a.id_pinjaman WHERE a.id_angsuran = ?");
         $row->execute([$id]);
         $data = $row->fetch();
         if ($data && $status === 'Diterima') {
-            $pdo->prepare("INSERT INTO transaksi_kas (tipe, kategori, nominal, keterangan, tanggal, created_at) VALUES ('masuk', 'angsuran', ?, 'Pembayaran angsuran', CURDATE(), NOW())")
-                ->execute([$data['nominal']]);
-
-            $check = $pdo->prepare("SELECT COUNT(*) AS total FROM angsuran WHERE pinjaman_id = ? AND status != 'Diterima'");
+            $check = $pdo->prepare("SELECT COUNT(*) AS total FROM angsuran WHERE id_pinjaman = ? AND status != 'Diterima'");
             $check->execute([$data['pinjaman_id']]);
             if ((int)$check->fetch()['total'] === 0) {
-                $pdo->prepare("UPDATE pinjaman SET status = 'Lunas' WHERE id = ?")->execute([$data['pinjaman_id']]);
+                $pdo->prepare("UPDATE pinjaman SET status = 'Lunas', tgl_pelunasan = CURDATE() WHERE id_pinjaman = ?")->execute([$data['pinjaman_id']]);
             }
         }
         if ($data) {
@@ -50,23 +47,21 @@ if (is_post()) {
         $tanggal = $_POST['tanggal_bayar'] ?? '';
         
         if ($pinjamanId && $nominal > 0 && $tanggal !== '') {
-            // Cari angsuran belum dibayar yang paling awal (terkecil)
-            $cekBelum = $pdo->prepare("SELECT angsuran_ke FROM angsuran WHERE pinjaman_id = ? AND status != 'Diterima' ORDER BY angsuran_ke ASC LIMIT 1");
+            $cekBelum = $pdo->prepare("SELECT a.angsuran_ke, a.id_angsuran FROM angsuran a WHERE a.id_pinjaman = ? AND a.status != 'Diterima' ORDER BY a.angsuran_ke ASC LIMIT 1");
             $cekBelum->execute([$pinjamanId]);
             $nextAngsuran = $cekBelum->fetch();
 
             if ($nextAngsuran) {
-                $angsuranKe = $nextAngsuran['angsuran_ke'];
-                $stmt = $pdo->prepare("UPDATE angsuran SET status = 'Diterima', nominal = ?, tanggal_bayar = ? WHERE pinjaman_id = ? AND angsuran_ke = ?");
-                $stmt->execute([$nominal, $tanggal, $pinjamanId, $angsuranKe]);
+                $angsuranId = (int)$nextAngsuran['id_angsuran'];
+                $angsuranKe = (int)$nextAngsuran['angsuran_ke'];
                 
-                $pdo->prepare("INSERT INTO transaksi_kas (tipe, kategori, nominal, keterangan, tanggal, created_at) VALUES ('masuk', 'angsuran', ?, 'Pembayaran manual', ?, NOW())")
-                    ->execute([$nominal, $tanggal]);
-
-                $check = $pdo->prepare("SELECT COUNT(*) AS total FROM angsuran WHERE pinjaman_id = ? AND status != 'Diterima'");
+                $stmt = $pdo->prepare("UPDATE angsuran SET status = 'Diterima', besar_angsuran = ?, tgl_pembayaran = ? WHERE id_angsuran = ?");
+                $stmt->execute([$nominal, $tanggal, $angsuranId]);
+                
+                $check = $pdo->prepare("SELECT COUNT(*) AS total FROM angsuran WHERE id_pinjaman = ? AND status != 'Diterima'");
                 $check->execute([$pinjamanId]);
                 if ((int)$check->fetch()['total'] === 0) {
-                    $pdo->prepare("UPDATE pinjaman SET status = 'Lunas' WHERE id = ?")->execute([$pinjamanId]);
+                    $pdo->prepare("UPDATE pinjaman SET status = 'Lunas', tgl_pelunasan = CURDATE() WHERE id_pinjaman = ?")->execute([$pinjamanId]);
                 }
                 log_activity((int)$authUser['id'], 'Input pembayaran manual angsuran pinjaman ID ' . $pinjamanId . ' sebesar ' . format_rupiah($nominal));
                 set_flash('success', "Pembayaran manual untuk angsuran ke-$angsuranKe tersimpan.");
@@ -80,18 +75,47 @@ if (is_post()) {
     }
 }
 
-$stmt = $pdo->query("SELECT a.*, p.nomor_pinjaman, u.nama FROM angsuran a JOIN pinjaman p ON a.pinjaman_id = p.id JOIN users u ON p.user_id = u.id ORDER BY a.created_at DESC");
+$stmt = $pdo->query("
+    SELECT 
+        a.id_angsuran AS id,
+        a.angsuran_ke,
+        da.tgl_jatuh_tempo AS jatuh_tempo,
+        a.besar_angsuran AS nominal,
+        a.tgl_pembayaran AS tanggal_bayar,
+        a.status,
+        a.bukti_transfer,
+        p.nama_pinjaman AS nomor_pinjaman,
+        u.nama 
+    FROM angsuran a 
+    JOIN detail_angsuran da ON a.id_angsuran = da.id_angsuran
+    JOIN anggota u ON a.id_anggota = u.id_anggota 
+    JOIN pinjaman p ON p.id_pinjaman = a.id_pinjaman
+    ORDER BY a.created_at DESC
+");
 $angsuran = $stmt->fetchAll();
 
-$pinjamanList = $pdo->query("SELECT id, nomor_pinjaman FROM pinjaman WHERE status IN ('Disetujui', 'Dicairkan')")->fetchAll();
+$pinjamanList = $pdo->query("SELECT id_pinjaman AS id, nama_pinjaman AS nomor_pinjaman FROM pinjaman WHERE status IN ('Disetujui', 'Dicairkan')")->fetchAll();
+
 $dendaRows = $pdo->query("
-    SELECT d.*, a.angsuran_ke, a.jatuh_tempo, p.nomor_pinjaman, u.nama
-    FROM denda d
-    JOIN angsuran a ON a.id = d.angsuran_id
-    JOIN pinjaman p ON p.id = a.pinjaman_id
-    JOIN users u ON u.id = d.user_id
-    ORDER BY d.status ASC, d.created_at DESC
+    SELECT 
+        da.id_angsuran AS id,
+        a.angsuran_ke,
+        da.tgl_jatuh_tempo AS jatuh_tempo,
+        da.jumlah_hari_terlambat AS jumlah_hari,
+        da.denda_total,
+        da.status_denda AS status,
+        da.tanggal_bayar_denda AS tanggal_bayar,
+        da.created_at,
+        p.nama_pinjaman AS nomor_pinjaman,
+        u.nama
+    FROM detail_angsuran da
+    JOIN angsuran a ON da.id_angsuran = a.id_angsuran
+    JOIN anggota u ON a.id_anggota = u.id_anggota
+    JOIN pinjaman p ON p.id_pinjaman = a.id_pinjaman
+    WHERE da.jumlah_hari_terlambat > 0
+    ORDER BY da.status_denda ASC, da.created_at DESC
 ")->fetchAll();
+
 $totalDendaBelumBayar = unpaid_fines_total();
 
 $page_title = 'Manajemen Angsuran';
@@ -189,7 +213,7 @@ $role = 'admin';
                             <td><span class="badge-status <?= status_badge_class($row['status']); ?>"><?= e($row['status']); ?></span></td>
                             <td>
                                 <?php if (!empty($row['bukti_transfer'])): ?>
-                                    <a href="/uploads/bukti_angsuran/<?= e($row['bukti_transfer']); ?>" target="_blank">Lihat</a>
+                                    <a href="<?= base_url('/uploads/bukti_angsuran/' . e($row['bukti_transfer'])) ?>" target="_blank">Lihat</a>
                                 <?php else: ?>
                                     -
                                 <?php endif; ?>
@@ -233,7 +257,7 @@ $role = 'admin';
                 </div>
                 <div class="mb-2">
                     <label class="form-label">Nominal</label>
-                    <input type="number" name="nominal" class="form-control" min="1" required>
+                    <input type="text" name="nominal" data-type="currency" class="form-control" required>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Tanggal Bayar</label>

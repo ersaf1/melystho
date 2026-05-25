@@ -8,7 +8,7 @@ $authUser = current_user();
 
 if (isset($_GET['print'])) {
     $id   = (int)$_GET['print'];
-    $stmt = $pdo->prepare("SELECT s.*, u.nama FROM simpanan s JOIN users u ON s.user_id = u.id WHERE s.id = ?");
+    $stmt = $pdo->prepare("SELECT s.*, s.id_simpanan AS id, s.nm_simpanan AS jenis_simpanan, s.besar_simpanan AS nominal, s.tgl_simpanan AS tanggal_transaksi, s.ket AS keterangan, u.nama, u.id_anggota AS user_id FROM simpanan s JOIN anggota u ON s.id_anggota = u.id_anggota WHERE s.id_simpanan = ?");
     $stmt->execute([$id]);
     $data = $stmt->fetch();
     if ($data) {
@@ -42,8 +42,7 @@ if (is_post()) {
         $nominal   = (float)($_POST['nominal'] ?? 0);
         $keterangan = trim($_POST['keterangan'] ?? '');
         if ($userId && $nominal > 0) {
-            $pdo->prepare("INSERT INTO simpanan (user_id, jenis_simpanan, nominal, bukti_transfer, status, keterangan, tanggal_transaksi, created_at) VALUES (?, ?, ?, '', 'Diterima', ?, CURDATE(), NOW())")->execute([$userId, $jenis, $nominal, $keterangan]);
-            $pdo->prepare("INSERT INTO transaksi_kas (tipe, kategori, nominal, keterangan, tanggal, created_at) VALUES ('masuk', 'simpanan', ?, ?, CURDATE(), NOW())")->execute([$nominal, 'Simpanan manual']);
+            $pdo->prepare("INSERT INTO simpanan (id_anggota, nm_simpanan, besar_simpanan, bukti_transfer, status, ket, tgl_simpanan, created_at) VALUES (?, ?, ?, '', 'Diterima', ?, CURDATE(), NOW())")->execute([$userId, $jenis, $nominal, $keterangan]);
             log_activity((int)$authUser['id'], 'Menambah simpanan manual sebesar ' . format_rupiah($nominal));
             set_flash('success', 'Transaksi simpanan berhasil ditambahkan.');
         }
@@ -51,14 +50,10 @@ if (is_post()) {
         $id = (int)($_POST['id'] ?? 0);
         if ($id) {
             $status = $action === 'approve' ? 'Diterima' : 'Ditolak';
-            $pdo->prepare("UPDATE simpanan SET status = ? WHERE id = ?")->execute([$status, $id]);
-            $row = $pdo->prepare("SELECT s.nominal, s.user_id, u.nama FROM simpanan s JOIN users u ON u.id = s.user_id WHERE s.id = ?");
+            $pdo->prepare("UPDATE simpanan SET status = ? WHERE id_simpanan = ?")->execute([$status, $id]);
+            $row = $pdo->prepare("SELECT s.besar_simpanan AS nominal, s.id_anggota AS user_id, u.nama FROM simpanan s JOIN anggota u ON u.id_anggota = s.id_anggota WHERE s.id_simpanan = ?");
             $row->execute([$id]);
             $simpananRow = $row->fetch();
-            if ($status === 'Diterima') {
-                $nominal = (float)($simpananRow['nominal'] ?? 0);
-                $pdo->prepare("INSERT INTO transaksi_kas (tipe, kategori, nominal, keterangan, tanggal, created_at) VALUES ('masuk', 'simpanan', ?, 'Simpanan anggota', CURDATE(), NOW())")->execute([$nominal]);
-            }
             log_activity((int)$authUser['id'], ($status === 'Diterima' ? 'Menyetujui' : 'Menolak') . ' simpanan ' . ($simpananRow['nama'] ?? 'anggota'));
             set_flash('success', 'Status simpanan diperbarui.');
         }
@@ -73,17 +68,17 @@ $filterTanggal = $_GET['tanggal'] ?? '';
 
 $conditions = [];
 $params = [];
-if ($filterUser)     { $conditions[] = 's.user_id = ?';           $params[] = $filterUser; }
-if ($filterJenis)    { $conditions[] = 's.jenis_simpanan = ?';    $params[] = $filterJenis; }
+if ($filterUser)     { $conditions[] = 's.id_anggota = ?';           $params[] = $filterUser; }
+if ($filterJenis)    { $conditions[] = 's.nm_simpanan = ?';          $params[] = $filterJenis; }
 if ($filterStatus)   { $conditions[] = 's.status = ?';            $params[] = $filterStatus; }
-if ($filterTanggal)  { $conditions[] = 's.tanggal_transaksi = ?'; $params[] = $filterTanggal; }
+if ($filterTanggal)  { $conditions[] = 's.tgl_simpanan = ?';      $params[] = $filterTanggal; }
 $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
-$stmt = $pdo->prepare("SELECT s.*, u.nama FROM simpanan s JOIN users u ON s.user_id = u.id $where ORDER BY s.created_at DESC");
+$stmt = $pdo->prepare("SELECT s.*, s.id_simpanan AS id, s.nm_simpanan AS jenis_simpanan, s.besar_simpanan AS nominal, s.tgl_simpanan AS tanggal_transaksi, s.ket AS keterangan, u.nama, u.id_anggota AS user_id FROM simpanan s JOIN anggota u ON s.id_anggota = u.id_anggota $where ORDER BY s.created_at DESC");
 $stmt->execute($params);
 $simpanan = $stmt->fetchAll();
 
-$users = $pdo->query("SELECT id, nama FROM users WHERE role = 'user' ORDER BY nama ASC")->fetchAll();
+$users = $pdo->query("SELECT id_anggota AS id, nama FROM anggota WHERE role = 'user' ORDER BY nama ASC")->fetchAll();
 
 $page_title = 'Manajemen Simpanan';
 $role       = 'admin';
@@ -105,61 +100,63 @@ function badgeClass($status) {
 <div class="row g-4">
     <!-- LEFT: Filter + Table -->
     <div class="col-lg-8">
-        <!-- Filter Bar -->
-        <div class="filter-bar">
-            <form class="row g-2" method="get">
-                <div class="col-md-3">
-                    <label class="form-label" style="font-size:.75rem">Anggota</label>
-                    <select name="user_id" class="form-select form-select-sm">
-                        <option value="">Semua Anggota</option>
-                        <?php foreach ($users as $u): ?>
-                            <option value="<?= e($u['id']); ?>" <?= $filterUser === (int)$u['id'] ? 'selected' : ''; ?>><?= e($u['nama']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label" style="font-size:.75rem">Jenis</label>
-                    <select name="jenis" class="form-select form-select-sm">
-                        <option value="">Semua</option>
-                        <option value="pokok"    <?= $filterJenis === 'pokok' ? 'selected' : ''; ?>>Pokok</option>
-                        <option value="wajib"    <?= $filterJenis === 'wajib' ? 'selected' : ''; ?>>Wajib</option>
-                        <option value="sukarela" <?= $filterJenis === 'sukarela' ? 'selected' : ''; ?>>Sukarela</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label" style="font-size:.75rem">Status</label>
-                    <select name="status" class="form-select form-select-sm">
-                        <option value="">Semua</option>
-                        <option value="Menunggu konfirmasi" <?= $filterStatus === 'Menunggu konfirmasi' ? 'selected' : ''; ?>>Menunggu</option>
-                        <option value="Diterima" <?= $filterStatus === 'Diterima' ? 'selected' : ''; ?>>Diterima</option>
-                        <option value="Ditolak"  <?= $filterStatus === 'Ditolak' ? 'selected' : ''; ?>>Ditolak</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label" style="font-size:.75rem">Tanggal</label>
-                    <input type="date" name="tanggal" class="form-control form-control-sm" value="<?= e($filterTanggal); ?>">
-                </div>
-                <div class="col-md-3 d-flex align-items-end gap-2">
-                    <button type="submit" class="btn btn-primary btn-sm px-3" style="background:linear-gradient(135deg,var(--primary),var(--primary-light));border:none;border-radius:var(--radius-sm)" id="filterBtn">
-                        <i class="bi bi-funnel me-1"></i>Filter
-                    </button>
-                    <a href="/admin/simpanan.php" class="btn btn-outline-secondary btn-sm px-3" style="border-radius:var(--radius-sm)">Reset</a>
-                </div>
-            </form>
-        </div>
-
-        <div class="filter-bar">
-            <div class="search-input-wrap">
-                <i class="bi bi-search search-icon"></i>
-                <input type="search" class="form-control" placeholder="Cari simpanan..." data-table-search="#simpananTable">
+        <!-- Filter Card -->
+        <div class="panel mb-4">
+            <div class="panel-header py-3 px-4" style="border-bottom: 1px solid var(--border-light)">
+                <span class="panel-title" style="font-size:.9rem"><i class="bi bi-funnel me-2 text-primary-custom"></i>Filter Transaksi</span>
+            </div>
+            <div class="panel-body p-4">
+                <form class="row g-3" method="get">
+                    <div class="col-sm-6 col-md-3">
+                        <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--text-secondary)">Anggota</label>
+                        <select name="user_id" class="form-select form-select-sm" style="border-radius:var(--radius-sm)">
+                            <option value="">Semua Anggota</option>
+                            <?php foreach ($users as $u): ?>
+                                <option value="<?= e($u['id']); ?>" <?= $filterUser === (int)$u['id'] ? 'selected' : ''; ?>><?= e($u['nama']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-sm-6 col-md-3">
+                        <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--text-secondary)">Jenis Simpanan</label>
+                        <select name="jenis" class="form-select form-select-sm" style="border-radius:var(--radius-sm)">
+                            <option value="">Semua</option>
+                            <option value="pokok"    <?= $filterJenis === 'pokok' ? 'selected' : ''; ?>>Pokok</option>
+                            <option value="wajib"    <?= $filterJenis === 'wajib' ? 'selected' : ''; ?>>Wajib</option>
+                            <option value="sukarela" <?= $filterJenis === 'sukarela' ? 'selected' : ''; ?>>Sukarela</option>
+                        </select>
+                    </div>
+                    <div class="col-sm-6 col-md-3">
+                        <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--text-secondary)">Status</label>
+                        <select name="status" class="form-select form-select-sm" style="border-radius:var(--radius-sm)">
+                            <option value="">Semua</option>
+                            <option value="Menunggu konfirmasi" <?= $filterStatus === 'Menunggu konfirmasi' ? 'selected' : ''; ?>>Menunggu</option>
+                            <option value="Diterima" <?= $filterStatus === 'Diterima' ? 'selected' : ''; ?>>Diterima</option>
+                            <option value="Ditolak"  <?= $filterStatus === 'Ditolak' ? 'selected' : ''; ?>>Ditolak</option>
+                        </select>
+                    </div>
+                    <div class="col-sm-6 col-md-3">
+                        <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--text-secondary)">Tanggal Transaksi</label>
+                        <input type="date" name="tanggal" class="form-control form-control-sm" style="border-radius:var(--radius-sm)" value="<?= e($filterTanggal); ?>">
+                    </div>
+                    <div class="col-12 d-flex justify-content-end gap-2 mt-3 pt-2" style="border-top: 1px dashed var(--border-light)">
+                        <a href="<?= base_url('/admin/simpanan.php') ?>" class="btn btn-light btn-sm px-4" style="border:1px solid var(--border);border-radius:var(--radius-sm);font-weight:500;font-size:.8rem"><i class="bi bi-arrow-counterclockwise me-1"></i>Reset</a>
+                        <button type="submit" class="btn btn-primary btn-sm px-4" style="background:linear-gradient(135deg,var(--primary),var(--primary-light));border:none;border-radius:var(--radius-sm);font-weight:600;font-size:.8rem"><i class="bi bi-funnel me-1"></i>Terapkan Filter</button>
+                    </div>
+                </form>
             </div>
         </div>
 
-        <!-- Table -->
+        <!-- Table Panel -->
         <div class="panel">
-            <div class="panel-header">
-                <span class="panel-title"><i class="bi bi-piggy-bank me-2 text-green"></i>Data Simpanan</span>
-                <span style="font-size:.75rem;color:var(--text-muted)"><?= count($simpanan); ?> transaksi</span>
+            <div class="panel-header d-flex justify-content-between align-items-center flex-wrap gap-2 py-3 px-4" style="border-bottom: 1px solid var(--border-light)">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="panel-title" style="font-size:.9rem"><i class="bi bi-piggy-bank me-2 text-green"></i>Data Simpanan</span>
+                    <span class="badge bg-light text-secondary border" style="font-size:.7rem;font-weight:600;padding:.25rem .55rem"><?= count($simpanan); ?> transaksi</span>
+                </div>
+                <div class="search-input-wrap" style="width: 240px;margin: 0">
+                    <i class="bi bi-search search-icon"></i>
+                    <input type="search" class="form-control form-control-sm" placeholder="Cari simpanan..." data-table-search="#simpananTable" style="border-radius:var(--radius-sm)">
+                </div>
             </div>
             <div class="table-responsive panel-body p-0">
                 <table class="data-table" id="simpananTable">
@@ -177,9 +174,9 @@ function badgeClass($status) {
                     <tbody>
                         <?php if (empty($simpanan)): ?>
                             <tr><td colspan="7">
-                                <div class="empty-state">
-                                    <i class="bi bi-inbox"></i>
-                                    <p>Tidak ada data simpanan ditemukan</p>
+                                <div class="empty-state py-5">
+                                    <i class="bi bi-folder-x" style="font-size: 2.2rem; color: var(--text-muted)"></i>
+                                    <p class="mt-2 text-secondary" style="font-size:.85rem">Tidak ada data simpanan ditemukan</p>
                                 </div>
                             </td></tr>
                         <?php else: ?>
@@ -188,14 +185,14 @@ function badgeClass($status) {
                                     <td style="font-size:.8rem"><?= e(date('d/m/Y', strtotime($row['tanggal_transaksi']))); ?></td>
                                     <td style="font-weight:600;font-size:.85rem"><?= e($row['nama']); ?></td>
                                     <td>
-                                        <span style="font-size:.75rem;font-weight:600;padding:.2rem .55rem;border-radius:var(--radius-full);background:var(--accent-green-light);color:var(--accent-green)">
+                                        <span style="font-size:.72rem;font-weight:700;padding:.2rem .55rem;border-radius:var(--radius-full);background:var(--accent-green-light);color:var(--accent-green)">
                                             <?= e(ucfirst($row['jenis_simpanan'])); ?>
                                         </span>
                                     </td>
                                     <td style="font-weight:700;color:var(--accent-green)"><?= format_rupiah($row['nominal']); ?></td>
                                     <td>
                                         <?php if (!empty($row['bukti_transfer'])): ?>
-                                            <a href="/uploads/bukti_simpanan/<?= e($row['bukti_transfer']); ?>" target="_blank" class="btn-action view" title="Lihat Bukti"><i class="bi bi-file-image"></i></a>
+                                            <a href="<?= base_url('/uploads/bukti_simpanan/' . e($row['bukti_transfer'])) ?>" target="_blank" class="btn-action view" title="Lihat Bukti"><i class="bi bi-file-image"></i></a>
                                         <?php else: ?>
                                             <span style="color:var(--text-muted);font-size:.78rem">—</span>
                                         <?php endif; ?>
@@ -213,7 +210,7 @@ function badgeClass($status) {
                                                     <button type="submit" name="action" value="reject" class="btn-action reject" title="Tolak" onclick="return confirm('Tolak simpanan ini?')"><i class="bi bi-x-lg"></i></button>
                                                 </form>
                                             <?php endif; ?>
-                                            <a href="/admin/simpanan.php?print=<?= e($row['id']); ?>" class="btn-action print" title="Cetak" target="_blank"><i class="bi bi-printer"></i></a>
+                                            <a href="<?= base_url('/admin/simpanan.php?print=' . e($row['id'])) ?>" class="btn-action print" title="Cetak" target="_blank"><i class="bi bi-printer"></i></a>
                                         </div>
                                     </td>
                                 </tr>
@@ -259,7 +256,7 @@ function badgeClass($status) {
                         <label class="form-label">Nominal <span class="required">*</span></label>
                         <div class="input-group">
                             <span class="input-group-text">Rp</span>
-                            <input type="number" name="nominal" class="form-control" min="1000" required placeholder="0">
+                            <input type="text" name="nominal" data-type="currency" class="form-control" required placeholder="0">
                         </div>
                     </div>
                     <div class="mb-4">

@@ -25,10 +25,10 @@ $page_title = 'Beranda';
                     Platform digital koperasi yang aman, transparan, dan cepat. Pantau saldo, ajukan pinjaman, dan bayar angsuran kapan saja dari mana saja.
                 </p>
                 <div class="hero-cta">
-                    <a href="/register.php" class="btn-hero-primary" id="heroDaftarBtn">
+                    <a href="<?= base_url('/register.php') ?>" class="btn-hero-primary" id="heroDaftarBtn">
                         <i class="bi bi-person-plus-fill me-2"></i>Daftar Jadi Anggota
                     </a>
-                    <a href="/login.php" class="btn-hero-secondary" id="heroLoginBtn">
+                    <a href="<?= base_url('/login.php') ?>" class="btn-hero-secondary" id="heroLoginBtn">
                         <i class="bi bi-box-arrow-in-right me-2"></i>Login Anggota
                     </a>
                 </div>
@@ -136,7 +136,7 @@ $page_title = 'Beranda';
                 <div class="section-label"><i class="bi bi-clipboard-check"></i>Persyaratan</div>
                 <h2 class="section-title mb-3">Syarat Menjadi Anggota</h2>
                 <p class="section-sub">Bergabung mudah! Penuhi persyaratan berikut dan mulai nikmati layanan koperasi digital kami.</p>
-                <a href="/register.php" class="btn-primary-custom mt-3 d-inline-flex" id="syaratDaftarBtn">
+                <a href="<?= base_url('/register.php') ?>" class="btn-primary-custom mt-3 d-inline-flex" id="syaratDaftarBtn">
                     <i class="bi bi-arrow-right-circle-fill"></i>Daftar Sekarang
                 </a>
             </div>
@@ -262,10 +262,10 @@ $page_title = 'Beranda';
             Mulai perjalanan finansial Anda bersama ribuan anggota yang telah mempercayakan simpanan dan pinjamannya kepada kami.
         </p>
         <div class="d-flex justify-content-center gap-3 flex-wrap">
-            <a href="/register.php" class="btn-hero-primary" id="ctaDaftarBtn">
+            <a href="<?= base_url('/register.php') ?>" class="btn-hero-primary" id="ctaDaftarBtn">
                 <i class="bi bi-person-plus-fill me-2"></i>Daftar Sekarang — Gratis
             </a>
-            <a href="/login.php" class="btn-hero-secondary" id="ctaLoginBtn">
+            <a href="<?= base_url('/login.php') ?>" class="btn-hero-secondary" id="ctaLoginBtn">
                 <i class="bi bi-box-arrow-in-right me-2"></i>Sudah Punya Akun
             </a>
         </div>

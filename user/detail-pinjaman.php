@@ -7,7 +7,7 @@ $user = current_user();
 $pdo = db();
 $id = (int)($_GET['id'] ?? 0);
 
-$stmt = $pdo->prepare("SELECT * FROM pinjaman WHERE id = ? AND user_id = ?");
+$stmt = $pdo->prepare("SELECT *, id_pinjaman AS id, nama_pinjaman AS nomor_pinjaman, besar_pinjaman AS nominal, tgl_pengajuan_pinjaman AS tanggal_pengajuan, ket AS catatan, ket AS tujuan FROM pinjaman WHERE id_pinjaman = ? AND id_anggota = ?");
 $stmt->execute([$id, $user['id']]);
 $pinjaman = $stmt->fetch();
 if (!$pinjaman) {
@@ -17,17 +17,36 @@ if (!$pinjaman) {
 sync_late_fines((int)$user['id']);
 
 $scheduleStmt = $pdo->prepare("
-    SELECT a.*, d.jumlah_hari, d.total_denda, d.status AS status_denda
+    SELECT 
+        a.id_angsuran AS id,
+        a.angsuran_ke,
+        da.tgl_jatuh_tempo AS jatuh_tempo,
+        a.besar_angsuran AS nominal,
+        a.tgl_pembayaran AS tanggal_bayar,
+        a.status,
+        da.jumlah_hari_terlambat AS jumlah_hari,
+        da.denda_total,
+        da.status_denda AS status_denda
     FROM angsuran a
-    LEFT JOIN denda d ON d.angsuran_id = a.id
-    WHERE a.pinjaman_id = ?
+    JOIN detail_angsuran da ON a.id_angsuran = da.id_angsuran
+    WHERE a.id_pinjaman = ?
     ORDER BY a.angsuran_ke ASC
 ");
-$scheduleStmt->execute([$pinjaman['id']]);
+$scheduleStmt->execute([$id]);
 $schedule = $scheduleStmt->fetchAll();
 
-$historyStmt = $pdo->prepare("SELECT * FROM angsuran WHERE pinjaman_id = ? AND tanggal_bayar IS NOT NULL ORDER BY tanggal_bayar DESC");
-$historyStmt->execute([$pinjaman['id']]);
+$historyStmt = $pdo->prepare("
+    SELECT 
+        id_angsuran AS id,
+        angsuran_ke,
+        besar_angsuran AS nominal,
+        tgl_pembayaran AS tanggal_bayar,
+        status
+    FROM angsuran
+    WHERE id_pinjaman = ? AND tgl_pembayaran IS NOT NULL
+    ORDER BY tgl_pembayaran DESC
+");
+$historyStmt->execute([$id]);
 $history = $historyStmt->fetchAll();
 
 $page_title = 'Detail Pinjaman';
@@ -45,6 +64,10 @@ $role = 'user';
         <div class="col-md-4"><strong>Tenor:</strong> <?= e($pinjaman['tenor']); ?> bulan</div>
         <div class="col-md-4"><strong>Angsuran/Bulan:</strong> <?= format_rupiah($pinjaman['angsuran_per_bulan']); ?></div>
         <div class="col-md-4"><strong>Total Bayar:</strong> <?= format_rupiah($pinjaman['total_bayar']); ?></div>
+        <?php if (in_array($pinjaman['status'], ['Dicairkan', 'Lunas'], true) && !empty($pinjaman['tgl_pinjaman'])): ?>
+            <div class="col-md-4"><strong>Tanggal Pinjam:</strong> <?= e(date('d/m/Y', strtotime($pinjaman['tgl_pinjaman']))); ?></div>
+            <div class="col-md-4"><strong>Tanggal Pengembalian:</strong> <?= e(date('d/m/Y', strtotime("+{$pinjaman['tenor']} month", strtotime($pinjaman['tgl_pinjaman'])))); ?></div>
+        <?php endif; ?>
         <div class="col-md-12"><strong>Tujuan:</strong> <?= e($pinjaman['tujuan']); ?></div>
         <?php if (!empty($pinjaman['catatan'])): ?>
             <div class="col-md-12"><strong>Catatan:</strong> <?= e($pinjaman['catatan']); ?></div>

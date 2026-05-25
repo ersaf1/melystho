@@ -3,7 +3,7 @@
 return [
     'db' => [
         'host' => 'localhost',
-        'name' => 'koperasi',
+        'name' => 'koperasi_pinjaman',
         'user' => 'root',
         'pass' => '',
         'charset' => 'utf8mb4',

@@ -33,10 +33,12 @@ if (is_post()) {
     } else {
         $defaultBunga = (float)($_POST['default_bunga_persen'] ?? 2);
         $maxActive = (int)($_POST['max_active_loans'] ?? 1);
+        $maxLoanAmount = max(0, (float)($_POST['max_loan_amount'] ?? 10000000));
         $dendaPerHari = max(0, (float)($_POST['denda_per_hari'] ?? 5000));
         $reminderDays = max(0, (int)($_POST['reminder_days_before_due'] ?? 3));
         set_setting('default_bunga_persen', $defaultBunga);
         set_setting('max_active_loans', $maxActive);
+        set_setting('max_loan_amount', $maxLoanAmount);
         set_setting('denda_per_hari', $dendaPerHari);
         set_setting('reminder_days_before_due', $reminderDays);
         log_activity((int)$authUser['id'], 'Memperbarui pengaturan koperasi');
@@ -47,6 +49,7 @@ if (is_post()) {
 
 $defaultBunga = get_setting('default_bunga_persen', 2);
 $maxActive = get_setting('max_active_loans', 1);
+$maxLoanAmount = get_setting('max_loan_amount', 10000000);
 $dendaPerHari = get_setting('denda_per_hari', 5000);
 $reminderDays = get_setting('reminder_days_before_due', 3);
 
@@ -81,10 +84,17 @@ $role = 'admin';
                             <input type="number" name="max_active_loans" class="form-control" value="<?= e($maxActive); ?>">
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label">Maksimal Nominal Pinjaman</label>
+                            <div class="input-group">
+                                <span class="input-group-text">Rp</span>
+                                <input type="text" name="max_loan_amount" data-type="currency" class="form-control" value="<?= e($maxLoanAmount); ?>">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
                             <label class="form-label">Denda per Hari</label>
                             <div class="input-group">
                                 <span class="input-group-text">Rp</span>
-                                <input type="number" name="denda_per_hari" class="form-control" min="0" value="<?= e($dendaPerHari); ?>">
+                                <input type="text" name="denda_per_hari" data-type="currency" class="form-control" value="<?= e($dendaPerHari); ?>">
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -104,7 +114,7 @@ $role = 'admin';
             </div>
             <div class="panel-body">
                 <p style="font-size:.85rem;color:var(--text-secondary)">Unduh seluruh struktur dan data database dalam format SQL.</p>
-                <a href="/admin/pengaturan.php?backup=database" class="btn btn-outline-success w-100"><i class="bi bi-database-down me-1"></i>Download Backup SQL</a>
+                <a href="<?= base_url('/admin/pengaturan.php?backup=database') ?>" class="btn btn-outline-success w-100"><i class="bi bi-database-down me-1"></i>Download Backup SQL</a>
             </div>
         </div>
         <div class="panel">

@@ -2,60 +2,7 @@
 
 function ensure_feature_tables(): void
 {
-    static $done = false;
-    if ($done) {
-        return;
-    }
-
-    $pdo = db();
-
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS denda (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            angsuran_id INT NOT NULL UNIQUE,
-            user_id INT NOT NULL,
-            jumlah_hari INT NOT NULL DEFAULT 0,
-            tarif_per_hari DECIMAL(15,2) NOT NULL DEFAULT 0,
-            total_denda DECIMAL(15,2) NOT NULL DEFAULT 0,
-            status ENUM('Belum Dibayar', 'Dibayar') DEFAULT 'Belum Dibayar',
-            tanggal_denda DATE NOT NULL,
-            tanggal_bayar DATE NULL,
-            created_at DATETIME,
-            updated_at DATETIME,
-            INDEX idx_denda_user_status (user_id, status),
-            CONSTRAINT fk_denda_angsuran FOREIGN KEY (angsuran_id) REFERENCES angsuran(id) ON DELETE CASCADE,
-            CONSTRAINT fk_denda_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    ");
-
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS notifications (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            user_id INT NOT NULL,
-            judul VARCHAR(150) NOT NULL,
-            pesan TEXT NOT NULL,
-            is_read TINYINT(1) NOT NULL DEFAULT 0,
-            created_at DATETIME,
-            INDEX idx_notifications_user_read (user_id, is_read),
-            CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    ");
-
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS activity_logs (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            user_id INT NOT NULL,
-            aktivitas VARCHAR(255) NOT NULL,
-            created_at DATETIME,
-            INDEX idx_activity_logs_user_created (user_id, created_at),
-            CONSTRAINT fk_activity_logs_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    ");
-
-    set_setting('denda_per_hari', get_setting('denda_per_hari', 5000));
-    set_setting('reminder_days_before_due', get_setting('reminder_days_before_due', 3));
-
-    $done = true;
+    // No-op: all tables are predefined or file-based
 }
 
 function status_badge_class(?string $status = null): string
@@ -84,9 +31,24 @@ function log_activity(?int $userId, string $aktivitas): void
         return;
     }
 
-    ensure_feature_tables();
-    $stmt = db()->prepare("INSERT INTO activity_logs (user_id, aktivitas, created_at) VALUES (?, ?, NOW())");
-    $stmt->execute([$userId, $aktivitas]);
+    $dir = __DIR__ . '/../logs';
+    if (!is_dir($dir)) {
+        mkdir($dir, 0755, true);
+    }
+
+    $file = $dir . '/activity.log';
+    $timestamp = date('Y-m-d H:i:s');
+    $logLine = "[{$timestamp}] [User ID: {$userId}] {$aktivitas}\n";
+    file_put_contents($file, $logLine, FILE_APPEND);
+}
+
+function get_notifications_file(int $userId): string
+{
+    $dir = __DIR__ . '/../logs';
+    if (!is_dir($dir)) {
+        mkdir($dir, 0755, true);
+    }
+    return $dir . '/notifications_' . $userId . '.json';
 }
 
 function create_notification(int $userId, string $judul, string $pesan): void
@@ -95,56 +57,98 @@ function create_notification(int $userId, string $judul, string $pesan): void
         return;
     }
 
-    ensure_feature_tables();
-    $stmt = db()->prepare("INSERT INTO notifications (user_id, judul, pesan, is_read, created_at) VALUES (?, ?, ?, 0, NOW())");
-    $stmt->execute([$userId, $judul, $pesan]);
+    $file = get_notifications_file($userId);
+    $notifications = [];
+    if (file_exists($file)) {
+        $notifications = json_decode(file_get_contents($file), true) ?: [];
+    }
+
+    $newId = count($notifications) + 1;
+    $notifications[] = [
+        'id' => $newId,
+        'judul' => $judul,
+        'pesan' => $pesan,
+        'is_read' => 0,
+        'created_at' => date('Y-m-d H:i:s')
+    ];
+
+    file_put_contents($file, json_encode($notifications, JSON_PRETTY_PRINT));
 }
 
 function create_unique_notification(int $userId, string $judul, string $pesan): void
 {
-    ensure_feature_tables();
-    $stmt = db()->prepare("SELECT id FROM notifications WHERE user_id = ? AND judul = ? AND pesan = ? LIMIT 1");
-    $stmt->execute([$userId, $judul, $pesan]);
-    if (!$stmt->fetch()) {
-        create_notification($userId, $judul, $pesan);
+    $file = get_notifications_file($userId);
+    $notifications = [];
+    if (file_exists($file)) {
+        $notifications = json_decode(file_get_contents($file), true) ?: [];
     }
+
+    foreach ($notifications as $n) {
+        if ($n['judul'] === $judul && $n['pesan'] === $pesan) {
+            return;
+        }
+    }
+
+    create_notification($userId, $judul, $pesan);
 }
 
 function notify_admins(string $judul, string $pesan): void
 {
-    ensure_feature_tables();
-    $admins = db()->query("SELECT id FROM users WHERE role = 'admin'")->fetchAll();
+    $admins = db()->query("SELECT id_petugas FROM petugas_koperasi WHERE role = 'admin'")->fetchAll();
     foreach ($admins as $admin) {
-        create_notification((int)$admin['id'], $judul, $pesan);
+        create_notification((int)$admin['id_petugas'], $judul, $pesan);
     }
 }
 
 function unread_notification_count(int $userId): int
 {
-    ensure_feature_tables();
-    $stmt = db()->prepare("SELECT COUNT(*) AS total FROM notifications WHERE user_id = ? AND is_read = 0");
-    $stmt->execute([$userId]);
-    return (int)($stmt->fetch()['total'] ?? 0);
+    $file = get_notifications_file($userId);
+    if (!file_exists($file)) {
+        return 0;
+    }
+
+    $notifications = json_decode(file_get_contents($file), true) ?: [];
+    $count = 0;
+    foreach ($notifications as $n) {
+        if ($n['is_read'] == 0) {
+            $count++;
+        }
+    }
+    return $count;
 }
 
 function mark_notification_read(int $notificationId, int $userId): void
 {
-    ensure_feature_tables();
-    $stmt = db()->prepare("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?");
-    $stmt->execute([$notificationId, $userId]);
+    $file = get_notifications_file($userId);
+    if (!file_exists($file)) {
+        return;
+    }
+
+    $notifications = json_decode(file_get_contents($file), true) ?: [];
+    foreach ($notifications as &$n) {
+        if ($n['id'] == $notificationId) {
+            $n['is_read'] = 1;
+        }
+    }
+    file_put_contents($file, json_encode($notifications, JSON_PRETTY_PRINT));
 }
 
 function mark_all_notifications_read(int $userId): void
 {
-    ensure_feature_tables();
-    $stmt = db()->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?");
-    $stmt->execute([$userId]);
+    $file = get_notifications_file($userId);
+    if (!file_exists($file)) {
+        return;
+    }
+
+    $notifications = json_decode(file_get_contents($file), true) ?: [];
+    foreach ($notifications as &$n) {
+        $n['is_read'] = 1;
+    }
+    file_put_contents($file, json_encode($notifications, JSON_PRETTY_PRINT));
 }
 
 function sync_late_fines(?int $userId = null): void
 {
-    ensure_feature_tables();
-
     $tarif = (float)get_setting('denda_per_hari', 5000);
     if ($tarif <= 0) {
         return;
@@ -153,30 +157,30 @@ function sync_late_fines(?int $userId = null): void
     $params = [];
     $userFilter = '';
     if ($userId) {
-        $userFilter = ' AND p.user_id = ?';
+        $userFilter = ' AND a.id_anggota = ?';
         $params[] = $userId;
     }
 
     $sql = "
         SELECT
-            a.id AS angsuran_id,
+            a.id_angsuran,
             a.angsuran_ke,
-            a.jatuh_tempo,
+            da.tgl_jatuh_tempo,
             a.status AS status_angsuran,
-            p.nomor_pinjaman,
-            p.user_id,
+            p.nama_pinjaman,
+            a.id_anggota,
             DATEDIFF(
                 CASE
-                    WHEN a.status IN ('Menunggu konfirmasi', 'Diterima') AND a.tanggal_bayar IS NOT NULL
-                    THEN a.tanggal_bayar
+                    WHEN a.status IN ('Menunggu konfirmasi', 'Diterima') AND a.tgl_pembayaran IS NOT NULL
+                    THEN a.tgl_pembayaran
                     ELSE CURDATE()
                 END,
-                a.jatuh_tempo
+                da.tgl_jatuh_tempo
             ) AS jumlah_hari
         FROM angsuran a
-        JOIN pinjaman p ON p.id = a.pinjaman_id
-        WHERE a.jatuh_tempo IS NOT NULL
-          AND p.status IN ('Disetujui', 'Dicairkan', 'Lunas')
+        JOIN detail_angsuran da ON da.id_angsuran = a.id_angsuran
+        JOIN pinjaman p ON p.id_pinjaman = a.id_pinjaman
+        WHERE da.tgl_jatuh_tempo IS NOT NULL
           $userFilter
         HAVING jumlah_hari > 0
     ";
@@ -188,96 +192,84 @@ function sync_late_fines(?int $userId = null): void
     foreach ($rows as $row) {
         $hari = max(0, (int)$row['jumlah_hari']);
         $total = $hari * $tarif;
-        $existing = db()->prepare("SELECT id, status FROM denda WHERE angsuran_id = ? LIMIT 1");
-        $existing->execute([(int)$row['angsuran_id']]);
-        $fine = $existing->fetch();
 
-        if ($fine) {
-            if ($fine['status'] !== 'Dibayar') {
-                $update = db()->prepare("
-                    UPDATE denda
-                    SET jumlah_hari = ?, tarif_per_hari = ?, total_denda = ?, tanggal_denda = CURDATE(), updated_at = NOW()
-                    WHERE id = ?
-                ");
-                $update->execute([$hari, $tarif, $total, (int)$fine['id']]);
-            }
-            continue;
-        }
-
-        $insert = db()->prepare("
-            INSERT INTO denda (angsuran_id, user_id, jumlah_hari, tarif_per_hari, total_denda, status, tanggal_denda, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 'Belum Dibayar', CURDATE(), NOW(), NOW())
+        $update = db()->prepare("
+            UPDATE detail_angsuran
+            SET jumlah_hari_terlambat = ?, denda_tarif_per_hari = ?, denda_total = ?, tanggal_denda = COALESCE(tanggal_denda, CURDATE()), updated_at = NOW()
+            WHERE id_angsuran = ? AND status_denda != 'Dibayar'
         ");
-        $insert->execute([(int)$row['angsuran_id'], (int)$row['user_id'], $hari, $tarif, $total]);
+        $update->execute([$hari, $tarif, $total, (int)$row['id_angsuran']]);
 
         create_unique_notification(
-            (int)$row['user_id'],
+            (int)$row['id_anggota'],
             'Denda muncul',
-            'Denda angsuran ' . $row['nomor_pinjaman'] . ' ke-' . $row['angsuran_ke'] . ' sebesar ' . format_rupiah($total) . ' karena terlambat ' . $hari . ' hari.'
+            'Denda angsuran ' . $row['nama_pinjaman'] . ' ke-' . $row['angsuran_ke'] . ' sebesar ' . format_rupiah($total) . ' karena terlambat ' . $hari . ' hari.'
         );
     }
 }
 
 function sync_due_reminders(?int $userId = null): void
 {
-    ensure_feature_tables();
-
     $days = max(0, (int)get_setting('reminder_days_before_due', 3));
     $params = [$days];
     $userFilter = '';
     if ($userId) {
-        $userFilter = ' AND p.user_id = ?';
+        $userFilter = ' AND a.id_anggota = ?';
         $params[] = $userId;
     }
 
     $sql = "
-        SELECT a.id, a.angsuran_ke, a.jatuh_tempo, a.nominal, p.nomor_pinjaman, p.user_id
+        SELECT a.id_angsuran, a.angsuran_ke, da.tgl_jatuh_tempo, da.besar_angsuran, p.nama_pinjaman, a.id_anggota
         FROM angsuran a
-        JOIN pinjaman p ON p.id = a.pinjaman_id
+        JOIN detail_angsuran da ON da.id_angsuran = a.id_angsuran
+        JOIN pinjaman p ON p.id_pinjaman = a.id_pinjaman
         WHERE a.status IN ('Belum dibayar', 'Ditolak')
-          AND p.status IN ('Disetujui', 'Dicairkan')
-          AND a.jatuh_tempo BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)
+          AND da.tgl_jatuh_tempo BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)
           $userFilter
-        ORDER BY a.jatuh_tempo ASC
+        ORDER BY da.tgl_jatuh_tempo ASC
     ";
 
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
     foreach ($stmt->fetchAll() as $row) {
         create_unique_notification(
-            (int)$row['user_id'],
+            (int)$row['id_anggota'],
             'Jatuh tempo angsuran',
-            'Angsuran ' . $row['nomor_pinjaman'] . ' ke-' . $row['angsuran_ke'] . ' jatuh tempo pada ' . date('d/m/Y', strtotime($row['jatuh_tempo'])) . ' sebesar ' . format_rupiah($row['nominal']) . '.'
+            'Angsuran ' . $row['nama_pinjaman'] . ' ke-' . $row['angsuran_ke'] . ' jatuh tempo pada ' . date('d/m/Y', strtotime($row['tgl_jatuh_tempo'])) . ' sebesar ' . format_rupiah($row['besar_angsuran']) . '.'
         );
     }
 }
 
 function unpaid_fines_total(?int $userId = null): float
 {
-    ensure_feature_tables();
+    $pdo = db();
     if ($userId) {
-        $stmt = db()->prepare("SELECT SUM(total_denda) AS total FROM denda WHERE status = 'Belum Dibayar' AND user_id = ?");
+        $stmt = $pdo->prepare("
+            SELECT SUM(da.denda_total) AS total
+            FROM detail_angsuran da
+            JOIN angsuran a ON a.id_angsuran = da.id_angsuran
+            WHERE da.status_denda = 'Belum Dibayar' AND a.id_anggota = ?
+        ");
         $stmt->execute([$userId]);
         return (float)($stmt->fetch()['total'] ?? 0);
     }
 
-    $row = db()->query("SELECT SUM(total_denda) AS total FROM denda WHERE status = 'Belum Dibayar'")->fetch();
+    $row = $pdo->query("SELECT SUM(denda_total) AS total FROM detail_angsuran WHERE status_denda = 'Belum Dibayar'")->fetch();
     return (float)($row['total'] ?? 0);
 }
 
-function mark_fine_paid(int $fineId): bool
+function mark_fine_paid(int $angsuranId): bool
 {
-    ensure_feature_tables();
-    $stmt = db()->prepare("UPDATE denda SET status = 'Dibayar', tanggal_bayar = CURDATE(), updated_at = NOW() WHERE id = ? AND status = 'Belum Dibayar'");
-    $stmt->execute([$fineId]);
+    $stmt = db()->prepare("UPDATE detail_angsuran SET status_denda = 'Dibayar', tanggal_bayar_denda = CURDATE(), updated_at = NOW() WHERE id_angsuran = ? AND status_denda = 'Belum Dibayar'");
+    $stmt->execute([$angsuranId]);
     return $stmt->rowCount() > 0;
 }
 
 function database_backup_sql(): string
 {
     $pdo = db();
-    $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
-    $sql = "-- Backup Koperasi Simpan Pinjam\n";
+    $tables = ['katagori_pinjaman', 'petugas_koperasi', 'anggota', 'simpanan', 'angsuran', 'detail_angsuran', 'pinjaman'];
+    $sql = "-- Backup Koperasi Simpan Pinjam (7 CDM Tables)\n";
     $sql .= "-- Dibuat: " . date('Y-m-d H:i:s') . "\n\n";
     $sql .= "SET FOREIGN_KEY_CHECKS=0;\n\n";
 

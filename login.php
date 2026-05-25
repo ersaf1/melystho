@@ -14,16 +14,33 @@ if (is_post()) {
         $errors[] = 'Username/email dan password wajib diisi.';
     } else {
         $pdo  = db();
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ? OR email = ? LIMIT 1");
+        // First check petugas_koperasi (Admin)
+        $stmt = $pdo->prepare("SELECT * FROM petugas_koperasi WHERE username = ? OR email = ? LIMIT 1");
         $stmt->execute([$username, $username]);
         $user = $stmt->fetch();
         if ($user && password_verify($password, $user['password'])) {
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['role']    = $user['role'];
-            log_activity((int)$user['id'], 'Login ke sistem');
-            redirect($user['role'] === 'admin' ? '/admin/dashboard.php' : '/user/dashboard.php');
+            $_SESSION['user_id'] = $user['id_petugas'];
+            $_SESSION['role']    = 'admin';
+            log_activity((int)$user['id_petugas'], 'Login ke sistem (Admin)');
+            redirect('/admin/dashboard.php');
+        } else {
+            // Then check anggota (User)
+            $stmt = $pdo->prepare("SELECT * FROM anggota WHERE username = ? OR email = ? LIMIT 1");
+            $stmt->execute([$username, $username]);
+            $user = $stmt->fetch();
+            if ($user && password_verify($password, $user['password'])) {
+                if ($user['status'] === 'Nonaktif') {
+                    $errors[] = 'Akun Anda dinonaktifkan. Silakan hubungi admin.';
+                } else {
+                    $_SESSION['user_id'] = $user['id_anggota'];
+                    $_SESSION['role']    = 'user';
+                    log_activity((int)$user['id_anggota'], 'Login ke sistem (Anggota)');
+                    redirect('/user/dashboard.php');
+                }
+            } else {
+                $errors[] = 'Username/email atau password salah.';
+            }
         }
-        $errors[] = 'Username/email atau password salah.';
     }
 }
 
@@ -42,7 +59,7 @@ $config = require __DIR__ . '/config/config.php';
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="/assets/css/styles.css" rel="stylesheet">
+    <link href="<?= base_url('/assets/css/styles.css') ?>" rel="stylesheet">
 </head>
 <body style="background:var(--bg)">
 
@@ -131,7 +148,7 @@ $config = require __DIR__ . '/config/config.php';
                 <div class="divider"></div>
                 <p class="text-center mb-0" style="font-size:.85rem;color:var(--text-secondary)">
                     Belum punya akun?
-                    <a href="/register.php" style="color:var(--primary);font-weight:600;text-decoration:none" id="goRegister">Daftar Sekarang</a>
+                    <a href="<?= base_url('/register.php') ?>" style="color:var(--primary);font-weight:600;text-decoration:none" id="goRegister">Daftar Sekarang</a>
                 </p>
             </div>
 
@@ -143,6 +160,6 @@ $config = require __DIR__ . '/config/config.php';
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="/assets/js/main.js"></script>
+<script src="<?= base_url('/assets/js/main.js') ?>"></script>
 </body>
 </html>

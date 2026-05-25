@@ -4,6 +4,9 @@ require_once __DIR__ . '/../config/helpers.php';
 $config   = require __DIR__ . '/../config/config.php';
 $flash    = get_flash();
 $authUser = current_user();
+if (!$authUser) {
+    redirect('/logout.php');
+}
 $initials = strtoupper(substr($authUser['nama'] ?? 'U', 0, 1));
 
 /* Map status_verifikasi → CSS class and label */
@@ -22,7 +25,7 @@ sync_late_fines($role === 'user' ? (int)$authUser['id'] : null);
 sync_due_reminders($role === 'user' ? (int)$authUser['id'] : null);
 
 $unreadNotifications = unread_notification_count((int)$authUser['id']);
-$notificationUrl     = $role === 'admin' ? '/admin/notifikasi.php' : '/user/notifikasi.php';
+$notificationUrl     = $role === 'admin' ? base_url('/admin/notifikasi.php') : base_url('/user/notifikasi.php');
 ?>
 <?php require __DIR__ . '/header.php'; ?>
 
@@ -33,7 +36,7 @@ $notificationUrl     = $role === 'admin' ? '/admin/notifikasi.php' : '/user/noti
   <!-- ─── SIDEBAR ─── -->
   <aside class="app-sidebar" id="appSidebar">
     <!-- Brand -->
-    <a href="/" class="sidebar-brand">
+    <a href="<?= base_url('/') ?>" class="sidebar-brand">
       <span class="sidebar-brand-icon"><i class="bi bi-bank2"></i></span>
       <span class="sidebar-brand-text">
         <span class="sidebar-brand-name"><?= e($config['app']['name']); ?></span>
@@ -45,66 +48,66 @@ $notificationUrl     = $role === 'admin' ? '/admin/notifikasi.php' : '/user/noti
     <nav class="sidebar-nav">
       <?php if ($role === 'admin'): ?>
         <div class="sidebar-section"><span class="sidebar-section-label">Menu Utama</span></div>
-        <a href="/admin/dashboard.php" class="sidebar-link" id="sl-dashboard">
+        <a href="<?= base_url('/admin/dashboard.php') ?>" class="sidebar-link" id="sl-dashboard">
             <i class="bi bi-grid-1x2"></i>Dashboard
         </a>
-        <a href="/admin/anggota.php" class="sidebar-link" id="sl-anggota">
+        <a href="<?= base_url('/admin/anggota.php') ?>" class="sidebar-link" id="sl-anggota">
             <i class="bi bi-people"></i>Anggota
         </a>
 
         <div class="sidebar-section mt-2"><span class="sidebar-section-label">Transaksi</span></div>
-        <a href="/admin/simpanan.php" class="sidebar-link" id="sl-simpanan">
+        <a href="<?= base_url('/admin/simpanan.php') ?>" class="sidebar-link" id="sl-simpanan">
             <i class="bi bi-piggy-bank"></i>Simpanan
         </a>
-        <a href="/admin/pinjaman.php" class="sidebar-link" id="sl-pinjaman">
+        <a href="<?= base_url('/admin/pinjaman.php') ?>" class="sidebar-link" id="sl-pinjaman">
             <i class="bi bi-cash-stack"></i>Pinjaman
         </a>
-        <a href="/admin/angsuran.php" class="sidebar-link" id="sl-angsuran">
+        <a href="<?= base_url('/admin/angsuran.php') ?>" class="sidebar-link" id="sl-angsuran">
             <i class="bi bi-calendar-check"></i>Angsuran
         </a>
 
         <div class="sidebar-section mt-2"><span class="sidebar-section-label">Lainnya</span></div>
-        <a href="/admin/laporan.php" class="sidebar-link" id="sl-laporan">
+        <a href="<?= base_url('/admin/laporan.php') ?>" class="sidebar-link" id="sl-laporan">
             <i class="bi bi-file-earmark-bar-graph"></i>Laporan
         </a>
-        <a href="/admin/notifikasi.php" class="sidebar-link" id="sl-notifikasi">
+        <a href="<?= base_url('/admin/notifikasi.php') ?>" class="sidebar-link" id="sl-notifikasi">
             <i class="bi bi-bell"></i>Notifikasi
             <?php if ($unreadNotifications > 0): ?>
                 <span class="sidebar-link-badge"><?= $unreadNotifications; ?></span>
             <?php endif; ?>
         </a>
-        <a href="/admin/audit-log.php" class="sidebar-link" id="sl-audit-log">
+        <a href="<?= base_url('/admin/audit-log.php') ?>" class="sidebar-link" id="sl-audit-log">
             <i class="bi bi-shield-check"></i>Audit Log
         </a>
-        <a href="/admin/pengaturan.php" class="sidebar-link" id="sl-pengaturan">
+        <a href="<?= base_url('/admin/pengaturan.php') ?>" class="sidebar-link" id="sl-pengaturan">
             <i class="bi bi-gear"></i>Pengaturan
         </a>
       <?php else: ?>
         <div class="sidebar-section"><span class="sidebar-section-label">Menu</span></div>
-        <a href="/user/dashboard.php" class="sidebar-link" id="sl-dashboard">
+        <a href="<?= base_url('/user/dashboard.php') ?>" class="sidebar-link" id="sl-dashboard">
             <i class="bi bi-grid-1x2"></i>Dashboard
         </a>
-        <a href="/user/profil.php" class="sidebar-link" id="sl-profil">
+        <a href="<?= base_url('/user/profil.php') ?>" class="sidebar-link" id="sl-profil">
             <i class="bi bi-person-circle"></i>Profil Saya
         </a>
 
         <div class="sidebar-section mt-2"><span class="sidebar-section-label">Keuangan</span></div>
-        <a href="/user/simpanan.php" class="sidebar-link" id="sl-simpanan">
+        <a href="<?= base_url('/user/simpanan.php') ?>" class="sidebar-link" id="sl-simpanan">
             <i class="bi bi-piggy-bank"></i>Simpanan
         </a>
-        <a href="/user/pinjaman.php" class="sidebar-link" id="sl-pinjaman">
+        <a href="<?= base_url('/user/pinjaman.php') ?>" class="sidebar-link" id="sl-pinjaman">
             <i class="bi bi-cash-stack"></i>Pinjaman
         </a>
-        <a href="/user/bayar-angsuran.php" class="sidebar-link" id="sl-angsuran">
+        <a href="<?= base_url('/user/bayar-angsuran.php') ?>" class="sidebar-link" id="sl-angsuran">
             <i class="bi bi-calendar-check"></i>Angsuran
         </a>
-        <a href="/user/notifikasi.php" class="sidebar-link" id="sl-notifikasi">
+        <a href="<?= base_url('/user/notifikasi.php') ?>" class="sidebar-link" id="sl-notifikasi">
             <i class="bi bi-bell"></i>Notifikasi
             <?php if ($unreadNotifications > 0): ?>
                 <span class="sidebar-link-badge"><?= $unreadNotifications; ?></span>
             <?php endif; ?>
         </a>
-        <a href="/user/riwayat-aktivitas.php" class="sidebar-link" id="sl-riwayat-aktivitas">
+        <a href="<?= base_url('/user/riwayat-aktivitas.php') ?>" class="sidebar-link" id="sl-riwayat-aktivitas">
             <i class="bi bi-clock-history"></i>Riwayat Aktivitas
         </a>
       <?php endif; ?>
@@ -118,7 +121,7 @@ $notificationUrl     = $role === 'admin' ? '/admin/notifikasi.php' : '/user/noti
           <div class="sidebar-user-name"><?= e(explode(' ', $authUser['nama'])[0] ?? $authUser['nama']); ?></div>
           <div class="sidebar-user-role"><?= $role === 'admin' ? 'Administrator' : 'Anggota'; ?></div>
         </div>
-        <a href="/logout.php" class="sidebar-logout ms-auto" title="Logout"><i class="bi bi-box-arrow-right"></i></a>
+        <a href="<?= base_url('/logout.php') ?>" class="sidebar-logout ms-auto" title="Logout"><i class="bi bi-box-arrow-right"></i></a>
       </div>
     </div>
   </aside>

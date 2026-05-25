@@ -33,7 +33,7 @@ if (is_post()) {
     }
 
     if (empty($errors)) {
-        $stmt = $pdo->prepare("INSERT INTO simpanan (user_id, jenis_simpanan, nominal, bukti_transfer, status, keterangan, tanggal_transaksi, created_at) VALUES (?, ?, ?, ?, 'Menunggu konfirmasi', ?, CURDATE(), NOW())");
+        $stmt = $pdo->prepare("INSERT INTO simpanan (id_anggota, nm_simpanan, besar_simpanan, bukti_transfer, status, ket, tgl_simpanan, created_at) VALUES (?, ?, ?, ?, 'Menunggu konfirmasi', ?, CURDATE(), NOW())");
         $stmt->execute([$user['id'], $jenis, $nominal, $bukti, $catatan]);
         log_activity((int)$user['id'], 'Mengajukan simpanan ' . ucfirst($jenis) . ' sebesar ' . format_rupiah($nominal));
         notify_admins('Pengajuan simpanan baru', $user['nama'] . ' mengajukan simpanan ' . ucfirst($jenis) . ' sebesar ' . format_rupiah($nominal) . '.');
@@ -48,7 +48,7 @@ $role = 'user';
 <?php require __DIR__ . '/../includes/dashboard_top.php'; ?>
 
 <div class="form-section">
-    <h4 class="mb-4">Ajukan Simpanan Sukarela</h4>
+    <h4 class="mb-4">Ajukan Simpanan</h4>
     <?php if (!empty($errors)): ?>
         <div class="alert alert-danger"><?= e($errors[0]); ?></div>
     <?php endif; ?>
@@ -64,7 +64,7 @@ $role = 'user';
             </div>
             <div class="col-md-6">
                 <label class="form-label">Nominal</label>
-                <input type="number" name="nominal" class="form-control" min="1000" required>
+                <input type="text" name="nominal" data-type="currency" class="form-control" required>
             </div>
             <div class="col-md-6">
                 <label class="form-label">Upload Bukti Transfer</label>

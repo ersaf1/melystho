@@ -10,19 +10,19 @@ if (is_post()) {
     $id     = (int)($_POST['id'] ?? 0);
     $action = $_POST['action'] ?? '';
     if ($id > 0) {
-        $targetStmt = $pdo->prepare("SELECT nama FROM users WHERE id = ? AND role = 'user'");
+        $targetStmt = $pdo->prepare("SELECT nama FROM anggota WHERE id_anggota = ? AND role = 'user'");
         $targetStmt->execute([$id]);
         $targetName = $targetStmt->fetch()['nama'] ?? 'Anggota';
         if ($action === 'approve') {
-            $pdo->prepare("UPDATE users SET status_verifikasi = 'Disetujui', updated_at = NOW() WHERE id = ?")->execute([$id]);
+            $pdo->prepare("UPDATE anggota SET status = 'Disetujui', updated_at = NOW() WHERE id_anggota = ?")->execute([$id]);
             log_activity((int)$authUser['id'], 'Menyetujui anggota ' . $targetName);
             set_flash('success', 'Anggota berhasil disetujui.');
         } elseif ($action === 'reject') {
-            $pdo->prepare("UPDATE users SET status_verifikasi = 'Ditolak', updated_at = NOW() WHERE id = ?")->execute([$id]);
+            $pdo->prepare("UPDATE anggota SET status = 'Ditolak', updated_at = NOW() WHERE id_anggota = ?")->execute([$id]);
             log_activity((int)$authUser['id'], 'Menolak anggota ' . $targetName);
             set_flash('success', 'Pendaftaran anggota ditolak.');
         } elseif ($action === 'toggle') {
-            $pdo->prepare("UPDATE users SET status_verifikasi = IF(status_verifikasi = 'Nonaktif', 'Disetujui', 'Nonaktif'), updated_at = NOW() WHERE id = ?")->execute([$id]);
+            $pdo->prepare("UPDATE anggota SET status = IF(status = 'Nonaktif', 'Disetujui', 'Nonaktif'), updated_at = NOW() WHERE id_anggota = ?")->execute([$id]);
             log_activity((int)$authUser['id'], 'Mengubah status aktif anggota ' . $targetName);
             set_flash('success', 'Status anggota diperbarui.');
         }
@@ -36,17 +36,17 @@ $perPage = 10;
 $offset  = ($page - 1) * $perPage;
 
 if ($q !== '') {
-    $stmt = $pdo->prepare("SELECT COUNT(*) AS total FROM users WHERE role = 'user' AND (nama LIKE ? OR nik LIKE ? OR email LIKE ?)");
+    $stmt = $pdo->prepare("SELECT COUNT(*) AS total FROM anggota WHERE role = 'user' AND (nama LIKE ? OR nik LIKE ? OR email LIKE ?)");
     $stmt->execute(["%$q%", "%$q%", "%$q%"]);
     $total = (int)$stmt->fetch()['total'];
-    $stmt  = $pdo->prepare("SELECT * FROM users WHERE role = 'user' AND (nama LIKE ? OR nik LIKE ? OR email LIKE ?) ORDER BY created_at DESC LIMIT ? OFFSET ?");
+    $stmt  = $pdo->prepare("SELECT *, id_anggota AS id, no_tlp AS no_hp, status AS status_verifikasi FROM anggota WHERE role = 'user' AND (nama LIKE ? OR nik LIKE ? OR email LIKE ?) ORDER BY created_at DESC LIMIT ? OFFSET ?");
     $stmt->bindValue(1, "%$q%"); $stmt->bindValue(2, "%$q%"); $stmt->bindValue(3, "%$q%");
     $stmt->bindValue(4, $perPage, PDO::PARAM_INT);
     $stmt->bindValue(5, $offset,  PDO::PARAM_INT);
     $stmt->execute();
 } else {
-    $total = (int)$pdo->query("SELECT COUNT(*) AS total FROM users WHERE role = 'user'")->fetch()['total'];
-    $stmt  = $pdo->prepare("SELECT * FROM users WHERE role = 'user' ORDER BY created_at DESC LIMIT ? OFFSET ?");
+    $total = (int)$pdo->query("SELECT COUNT(*) AS total FROM anggota WHERE role = 'user'")->fetch()['total'];
+    $stmt  = $pdo->prepare("SELECT *, id_anggota AS id, no_tlp AS no_hp, status AS status_verifikasi FROM anggota WHERE role = 'user' ORDER BY created_at DESC LIMIT ? OFFSET ?");
     $stmt->bindValue(1, $perPage, PDO::PARAM_INT);
     $stmt->bindValue(2, $offset,  PDO::PARAM_INT);
     $stmt->execute();
@@ -99,7 +99,7 @@ function badgeClass(?string $status = null): string {
         </div>
         <?php if ($q): ?>
         <div class="col-auto">
-            <a href="/admin/anggota.php" class="btn btn-outline-secondary px-3" style="border-radius:var(--radius);font-size:.875rem">
+            <a href="<?= base_url('/admin/anggota.php') ?>" class="btn btn-outline-secondary px-3" style="border-radius:var(--radius);font-size:.875rem">
                 <i class="bi bi-x me-1"></i>Reset
             </a>
         </div>
@@ -164,11 +164,11 @@ function badgeClass(?string $status = null): string {
                             </td>
                             <td>
                                 <div class="d-flex gap-1 flex-wrap">
-                                    <a href="/admin/detail-anggota.php?id=<?= e($item['id']); ?>" class="btn-action view" title="Lihat Detail"><i class="bi bi-eye"></i></a>
+                                    <a href="<?= base_url('/admin/detail-anggota.php?id=' . e($item['id'])) ?>" class="btn-action view" title="Lihat Detail"><i class="bi bi-eye"></i></a>
                                     <?php if ($item['status_verifikasi'] === 'Menunggu Verifikasi'): ?>
                                         <button class="btn-action approve"
                                                 data-bs-toggle="modal" data-bs-target="#confirmModal"
-                                                data-action="/admin/anggota.php"
+                                                data-action="<?= base_url('/admin/anggota.php') ?>"
                                             data-message="Setujui pendaftaran anggota <?= e($item['nama']); ?>?"
                                                 data-id="<?= e($item['id']); ?>"
                                                 data-action-type="approve"
@@ -177,7 +177,7 @@ function badgeClass(?string $status = null): string {
                                         </button>
                                         <button class="btn-action reject"
                                                 data-bs-toggle="modal" data-bs-target="#confirmModal"
-                                                data-action="/admin/anggota.php"
+                                                data-action="<?= base_url('/admin/anggota.php') ?>"
                                             data-message="Tolak pendaftaran anggota <?= e($item['nama']); ?>?"
                                                 data-id="<?= e($item['id']); ?>"
                                                 data-action-type="reject"
@@ -187,7 +187,7 @@ function badgeClass(?string $status = null): string {
                                     <?php endif; ?>
                                     <button class="btn-action toggle"
                                             data-bs-toggle="modal" data-bs-target="#confirmModal"
-                                            data-action="/admin/anggota.php"
+                                            data-action="<?= base_url('/admin/anggota.php') ?>"
                                             data-message="Ubah status aktif/nonaktif anggota <?= e($item['nama']); ?>?"
                                             data-id="<?= e($item['id']); ?>"
                                             data-action-type="toggle"
@@ -232,23 +232,6 @@ function badgeClass(?string $status = null): string {
     </div>
 </div>
 
-<?php
-$extra_js = "<script>
-const modal = document.getElementById('confirmModal');
-modal.addEventListener('show.bs.modal', event => {
-    const btn = event.relatedTarget;
-    document.getElementById('confirmId').value = btn.getAttribute('data-id');
-    document.getElementById('confirmAction').value = btn.getAttribute('data-action-type');
-    modal.querySelector('.confirm-message').innerHTML = btn.getAttribute('data-message');
-    modal.querySelector('form').setAttribute('action', btn.getAttribute('data-action'));
-    const typeMap = { approve: 'success', reject: 'danger', toggle: 'warning' };
-    const iconMap = { approve: 'bi-check-circle', reject: 'bi-x-circle', toggle: 'bi-arrow-repeat' };
-    const t = btn.getAttribute('data-action-type');
-    const iconEl = modal.querySelector('.modal-icon');
-    iconEl.className = 'modal-icon ' + (typeMap[t] || 'warning') + ' mb-3';
-    iconEl.innerHTML = '<i class=\"bi ' + (iconMap[t] || 'bi-question-circle') + '\"></i>';
-});
-</script>";
-?>
+
 
 <?php require __DIR__ . '/../includes/dashboard_bottom.php'; ?>

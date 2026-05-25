@@ -8,7 +8,7 @@ $pdo  = db();
 sync_late_fines((int)$user['id']);
 sync_due_reminders((int)$user['id']);
 
-$stmt = $pdo->prepare("SELECT jenis_simpanan, SUM(nominal) AS total FROM simpanan WHERE user_id = ? AND status = 'Diterima' GROUP BY jenis_simpanan");
+$stmt = $pdo->prepare("SELECT nm_simpanan AS jenis_simpanan, SUM(besar_simpanan) AS total FROM simpanan WHERE id_anggota = ? AND status = 'Diterima' GROUP BY nm_simpanan");
 $stmt->execute([$user['id']]);
 $simpananTotals = ['pokok' => 0, 'wajib' => 0, 'sukarela' => 0];
 foreach ($stmt->fetchAll() as $row) {
@@ -16,24 +16,24 @@ foreach ($stmt->fetchAll() as $row) {
 }
 $totalSimpanan = array_sum($simpananTotals);
 
-$stmt = $pdo->prepare("SELECT SUM(nominal) AS total FROM pinjaman WHERE user_id = ? AND status IN ('Menunggu review', 'Disetujui', 'Dicairkan')");
+$stmt = $pdo->prepare("SELECT SUM(besar_pinjaman) AS total FROM pinjaman WHERE id_anggota = ? AND status IN ('Menunggu review', 'Disetujui', 'Dicairkan')");
 $stmt->execute([$user['id']]);
 $totalPinjaman = (float)($stmt->fetch()['total'] ?? 0);
 
-$stmt = $pdo->prepare("SELECT SUM(a.nominal) AS total FROM angsuran a JOIN pinjaman p ON a.pinjaman_id = p.id WHERE p.user_id = ? AND a.status != 'Diterima'");
+$stmt = $pdo->prepare("SELECT SUM(besar_angsuran) AS total FROM angsuran WHERE id_anggota = ? AND status != 'Diterima'");
 $stmt->execute([$user['id']]);
 $sisaAngsuran = (float)($stmt->fetch()['total'] ?? 0);
 $totalDenda = unpaid_fines_total((int)$user['id']);
 
-$recentSimpanan = $pdo->prepare("SELECT * FROM simpanan WHERE user_id = ? ORDER BY tanggal_transaksi DESC LIMIT 5");
+$recentSimpanan = $pdo->prepare("SELECT *, id_simpanan AS id, nm_simpanan AS jenis_simpanan, besar_simpanan AS nominal, tgl_simpanan AS tanggal_transaksi FROM simpanan WHERE id_anggota = ? ORDER BY tgl_simpanan DESC LIMIT 5");
 $recentSimpanan->execute([$user['id']]);
 $recentSimpanan = $recentSimpanan->fetchAll();
 
-$recentAngsuran = $pdo->prepare("SELECT a.*, p.nomor_pinjaman FROM angsuran a JOIN pinjaman p ON a.pinjaman_id = p.id WHERE p.user_id = ? ORDER BY a.created_at DESC LIMIT 5");
+$recentAngsuran = $pdo->prepare("SELECT a.*, a.besar_angsuran AS nominal, p.nama_pinjaman AS nomor_pinjaman FROM angsuran a JOIN pinjaman p ON a.id_pinjaman = p.id_pinjaman WHERE a.id_anggota = ? ORDER BY a.created_at DESC LIMIT 5");
 $recentAngsuran->execute([$user['id']]);
 $recentAngsuran = $recentAngsuran->fetchAll();
 
-$isVerified = $user['status_verifikasi'] === 'Disetujui';
+$isVerified = $user['status'] === 'Disetujui';
 
 $page_title = 'Dashboard';
 $role = 'user';
@@ -63,7 +63,7 @@ function badgeClass($status) {
         <p class="page-sub">Berikut ringkasan keuangan koperasi Anda hari ini.</p>
     </div>
     <?php if ($isVerified): ?>
-        <a href="/user/ajukan-pinjaman.php" class="btn-primary-custom" id="ajukanPinjamanBtn">
+        <a href="<?= base_url('/user/ajukan-pinjaman.php') ?>" class="btn-primary-custom" id="ajukanPinjamanBtn">
             <i class="bi bi-plus-circle-fill"></i>Ajukan Pinjaman
         </a>
     <?php else: ?>
@@ -80,7 +80,7 @@ function badgeClass($status) {
         <div>
             <strong>Akun Anda Sedang Menunggu Verifikasi</strong>
             <div style="font-size:.82rem;margin-top:2px">
-                Status saat ini: <strong><?= e($user['status_verifikasi']); ?></strong>.
+                Status saat ini: <strong><?= e($user['status']); ?></strong>.
                 Beberapa fitur seperti pengajuan pinjaman akan aktif setelah admin memverifikasi akun Anda (1–2 hari kerja).
             </div>
         </div>
@@ -124,7 +124,7 @@ function badgeClass($status) {
             <div class="stat-icon primary"><i class="bi bi-person-check-fill"></i></div>
             <div class="stat-info">
                 <div class="stat-label">Status Anggota</div>
-                <div class="stat-value sm"><?= e($user['status_verifikasi']); ?></div>
+                <div class="stat-value sm"><?= e($user['status']); ?></div>
                 <div class="stat-trend">Keanggotaan koperasi</div>
             </div>
         </div>
@@ -170,7 +170,7 @@ function badgeClass($status) {
         <div class="panel">
             <div class="panel-header">
                 <span class="panel-title"><i class="bi bi-piggy-bank me-2 text-green"></i>Simpanan Terbaru</span>
-                <a href="/user/simpanan.php" style="font-size:.78rem;color:var(--primary);font-weight:600;text-decoration:none">Lihat Semua →</a>
+                <a href="<?= base_url('/user/simpanan.php') ?>" style="font-size:.78rem;color:var(--primary);font-weight:600;text-decoration:none">Lihat Semua →</a>
             </div>
             <div class="table-responsive panel-body p-0">
                 <table class="data-table">
@@ -211,7 +211,7 @@ function badgeClass($status) {
         <div class="panel">
             <div class="panel-header">
                 <span class="panel-title"><i class="bi bi-calendar-check me-2" style="color:var(--accent-amber)"></i>Angsuran Terbaru</span>
-                <a href="/user/bayar-angsuran.php" style="font-size:.78rem;color:var(--primary);font-weight:600;text-decoration:none">Lihat Semua →</a>
+                <a href="<?= base_url('/user/bayar-angsuran.php') ?>" style="font-size:.78rem;color:var(--primary);font-weight:600;text-decoration:none">Lihat Semua →</a>
             </div>
             <div class="table-responsive panel-body p-0">
                 <table class="data-table">
@@ -256,14 +256,14 @@ function badgeClass($status) {
     <div class="panel-body">
         <div class="row g-3">
             <div class="col-6 col-md-3">
-                <a href="/user/ajukan-simpanan.php" class="d-flex flex-column align-items-center gap-2 p-3 text-decoration-none"
+                <a href="<?= base_url('/user/ajukan-simpanan.php') ?>" class="d-flex flex-column align-items-center gap-2 p-3 text-decoration-none"
                    style="background:var(--accent-green-soft);border:1px solid var(--accent-green-light);border-radius:var(--radius);transition:var(--transition)" id="quickSimpananBtn">
                     <i class="bi bi-plus-circle-fill" style="font-size:1.5rem;color:var(--accent-green)"></i>
                     <span style="font-size:.78rem;font-weight:600;color:var(--accent-green)">Setor Simpanan</span>
                 </a>
             </div>
             <div class="col-6 col-md-3">
-                <a href="<?= $isVerified ? '/user/ajukan-pinjaman.php' : '#'; ?>"
+                <a href="<?= $isVerified ? base_url('/user/ajukan-pinjaman.php') : '#'; ?>"
                    class="d-flex flex-column align-items-center gap-2 p-3 text-decoration-none <?= !$isVerified ? 'pe-none' : ''; ?>"
                    style="background:<?= $isVerified ? 'var(--accent-amber-light)' : 'var(--bg)'; ?>;border:1px solid <?= $isVerified ? 'var(--accent-amber-light)' : 'var(--border)'; ?>;border-radius:var(--radius);opacity:<?= $isVerified ? '1' : '.5'; ?>;transition:var(--transition)" id="quickPinjamanBtn">
                     <i class="bi bi-send-fill" style="font-size:1.5rem;color:<?= $isVerified ? 'var(--accent-amber)' : 'var(--text-muted)'; ?>"></i>
@@ -271,14 +271,14 @@ function badgeClass($status) {
                 </a>
             </div>
             <div class="col-6 col-md-3">
-                <a href="/user/bayar-angsuran.php" class="d-flex flex-column align-items-center gap-2 p-3 text-decoration-none"
+                <a href="<?= base_url('/user/bayar-angsuran.php') ?>" class="d-flex flex-column align-items-center gap-2 p-3 text-decoration-none"
                    style="background:var(--accent-blue-light);border:1px solid var(--accent-blue-light);border-radius:var(--radius);transition:var(--transition)" id="quickAngsuranBtn">
                     <i class="bi bi-calendar-check-fill" style="font-size:1.5rem;color:var(--accent-blue)"></i>
                     <span style="font-size:.78rem;font-weight:600;color:var(--accent-blue)">Bayar Angsuran</span>
                 </a>
             </div>
             <div class="col-6 col-md-3">
-                <a href="/user/profil.php" class="d-flex flex-column align-items-center gap-2 p-3 text-decoration-none"
+                <a href="<?= base_url('/user/profil.php') ?>" class="d-flex flex-column align-items-center gap-2 p-3 text-decoration-none"
                    style="background:var(--primary-soft);border:1px solid var(--primary-soft);border-radius:var(--radius);transition:var(--transition)" id="quickProfilBtn">
                     <i class="bi bi-person-gear" style="font-size:1.5rem;color:var(--primary)"></i>
                     <span style="font-size:.78rem;font-weight:600;color:var(--primary)">Ubah Profil</span>

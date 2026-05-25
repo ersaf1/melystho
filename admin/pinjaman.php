@@ -10,7 +10,7 @@ $filterStatus = $_GET['status'] ?? '';
 $conditions = [];
 $params = [];
 if ($filterUser) {
-    $conditions[] = 'p.user_id = ?';
+    $conditions[] = 'p.id_anggota = ?';
     $params[] = $filterUser;
 }
 if ($filterStatus !== '') {
@@ -19,11 +19,11 @@ if ($filterStatus !== '') {
 }
 $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
-$stmt = $pdo->prepare("SELECT p.*, u.nama FROM pinjaman p JOIN users u ON p.user_id = u.id $where ORDER BY p.created_at DESC");
+$stmt = $pdo->prepare("SELECT p.*, p.id_pinjaman AS id, p.nama_pinjaman AS nomor_pinjaman, p.besar_pinjaman AS nominal, p.id_anggota AS user_id, u.nama FROM pinjaman p JOIN anggota u ON p.id_anggota = u.id_anggota $where ORDER BY p.created_at DESC");
 $stmt->execute($params);
 $pinjaman = $stmt->fetchAll();
 
-$users = $pdo->query("SELECT id, nama FROM users WHERE role = 'user' ORDER BY nama ASC")->fetchAll();
+$users = $pdo->query("SELECT id_anggota AS id, nama FROM anggota WHERE role = 'user' ORDER BY nama ASC")->fetchAll();
 
 $page_title = 'Manajemen Pinjaman';
 $role = 'admin';
@@ -89,7 +89,7 @@ $role = 'admin';
                     <td><?= format_rupiah($row['nominal']); ?></td>
                     <td><?= e($row['tenor']); ?> bulan</td>
                     <td><span class="badge-status <?= status_badge_class($row['status']); ?>"><?= e($row['status']); ?></span></td>
-                    <td><a href="/admin/detail-pinjaman.php?id=<?= e($row['id']); ?>" class="btn btn-sm btn-outline-primary">Detail</a></td>
+                    <td><a href="<?= base_url('/admin/detail-pinjaman.php?id=' . e($row['id'])) ?>" class="btn btn-sm btn-outline-primary">Detail</a></td>
                 </tr>
             <?php endforeach; ?>
             <?php if (empty($pinjaman)): ?>
