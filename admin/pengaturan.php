@@ -31,27 +31,30 @@ if (is_post()) {
             }
         }
     } else {
-        $defaultBunga = (float)($_POST['default_bunga_persen'] ?? 2);
-        $maxActive = (int)($_POST['max_active_loans'] ?? 1);
-        $maxLoanAmount = max(0, (float)($_POST['max_loan_amount'] ?? 10000000));
+        $defaultBunga = (float)($_POST['default_bunga_persen'] ?? 1.5);
+        $maxActive = (int)($_POST['max_active_loans'] ?? 3);
+        $maxLoanAmount = max(0, (float)($_POST['max_loan_amount'] ?? 50000000));
         $dendaPerHari = max(0, (float)($_POST['denda_per_hari'] ?? 5000));
         $reminderDays = max(0, (int)($_POST['reminder_days_before_due'] ?? 3));
+        $simpananWajibMinimal = max(0, (float)($_POST['simpanan_wajib_minimal'] ?? 50000));
         set_setting('default_bunga_persen', $defaultBunga);
         set_setting('max_active_loans', $maxActive);
         set_setting('max_loan_amount', $maxLoanAmount);
         set_setting('denda_per_hari', $dendaPerHari);
         set_setting('reminder_days_before_due', $reminderDays);
+        set_setting('simpanan_wajib_minimal', $simpananWajibMinimal);
         log_activity((int)$authUser['id'], 'Memperbarui pengaturan koperasi');
         set_flash('success', 'Pengaturan disimpan.');
     }
     redirect('/admin/pengaturan.php');
 }
 
-$defaultBunga = get_setting('default_bunga_persen', 2);
-$maxActive = get_setting('max_active_loans', 1);
-$maxLoanAmount = get_setting('max_loan_amount', 10000000);
+$defaultBunga = get_setting('default_bunga_persen', 1.5);
+$maxActive = get_setting('max_active_loans', 3);
+$maxLoanAmount = get_setting('max_loan_amount', 50000000);
 $dendaPerHari = get_setting('denda_per_hari', 5000);
 $reminderDays = get_setting('reminder_days_before_due', 3);
+$simpananWajibMinimal = get_setting('simpanan_wajib_minimal', 50000);
 
 $page_title = 'Pengaturan';
 $role = 'admin';
@@ -80,8 +83,9 @@ $role = 'admin';
                             <input type="number" step="0.1" name="default_bunga_persen" class="form-control" value="<?= e($defaultBunga); ?>">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Maksimal Pinjaman Aktif</label>
-                            <input type="number" name="max_active_loans" class="form-control" value="<?= e($maxActive); ?>">
+                            <label class="form-label">Maksimal Pinjaman Aktif per Anggota</label>
+                            <input type="number" name="max_active_loans" class="form-control" min="1" value="<?= e($maxActive); ?>">
+                            <div class="form-text">Sesuai ketentuan: 3 pinjaman aktif.</div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Maksimal Nominal Pinjaman</label>
@@ -100,6 +104,14 @@ $role = 'admin';
                         <div class="col-md-6">
                             <label class="form-label">Reminder Jatuh Tempo (hari)</label>
                             <input type="number" name="reminder_days_before_due" class="form-control" min="0" value="<?= e($reminderDays); ?>">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Minimal Simpanan Wajib</label>
+                            <div class="input-group">
+                                <span class="input-group-text">Rp</span>
+                                <input type="text" name="simpanan_wajib_minimal" data-type="currency" class="form-control" value="<?= e($simpananWajibMinimal); ?>">
+                            </div>
+                            <div class="form-text">Minimal setoran simpanan wajib per bulan.</div>
                         </div>
                     </div>
                     <button class="btn-primary-custom mt-4" type="submit"><i class="bi bi-save"></i>Simpan Pengaturan</button>

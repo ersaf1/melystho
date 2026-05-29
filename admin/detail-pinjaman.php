@@ -29,34 +29,42 @@ if (is_post()) {
             set_flash('danger', 'Bunga dan tenor tidak valid.');
             redirect('/admin/detail-pinjaman.php?id=' . $id);
         }
-        
-        $totalBunga = $pinjaman['nominal'] * ($bunga / 100) * $tenor;
-        $totalBayar = $pinjaman['nominal'] + $totalBunga;
-        $angsuran = $tenor > 0 ? $totalBayar / $tenor : 0;
-        
-        // 1. Update status of the loan to 'Dicairkan' (Active)
-        $stmt = $pdo->prepare("UPDATE pinjaman SET bunga_persen = ?, tenor = ?, total_bayar = ?, angsuran_per_bulan = ?, status = 'Dicairkan', tgl_acc_peminjam = CURDATE(), tgl_pinjaman = CURDATE() WHERE id_pinjaman = ?");
-        $stmt->execute([$bunga, $tenor, $totalBayar, $angsuran, $id]);
 
-        // 2. Generate installment schedules immediately
+        // ── Hitung dengan pembulatan aman (hindari floating-point error) ─────
+        $nominal    = (float)$pinjaman['nominal'];
+        $totalBunga = round($nominal * ($bunga / 100) * $tenor, 2);
+        $totalBayar = round($nominal + $totalBunga, 2);
+
+        // Angsuran per bulan dibulatkan ke 2 desimal
+        $angsuranBulat = round($totalBayar / $tenor, 2);
+
+        // Angsuran terakhir menyerap selisih pembulatan agar total = totalBayar persis
+        $angsuranTerakhir = round($totalBayar - ($angsuranBulat * ($tenor - 1)), 2);
+
+        // 1. Update status pinjaman → Dicairkan
+        $stmt = $pdo->prepare("UPDATE pinjaman SET bunga_persen = ?, tenor = ?, total_bayar = ?, angsuran_per_bulan = ?, status = 'Dicairkan', tgl_acc_peminjam = CURDATE(), tgl_pinjaman = CURDATE() WHERE id_pinjaman = ?");
+        $stmt->execute([$bunga, $tenor, $totalBayar, $angsuranBulat, $id]);
+
+        // 2. Generate jadwal angsuran (hanya jika belum ada)
         $exists = $pdo->prepare("SELECT COUNT(*) AS total FROM angsuran WHERE id_pinjaman = ?");
         $exists->execute([$id]);
         if ((int)$exists->fetch()['total'] === 0) {
             for ($i = 1; $i <= $tenor; $i++) {
                 $jatuhTempo = date('Y-m-d', strtotime("+{$i} month"));
-                
-                // Insert into angsuran
+
+                // Angsuran ke-tenor (terakhir) menyerap sisa pembulatan
+                $nominalAngsuran = ($i === $tenor) ? $angsuranTerakhir : $angsuranBulat;
+
                 $stmt = $pdo->prepare("INSERT INTO angsuran (id_katagori, id_anggota, id_pinjaman, tgl_pembayaran, angsuran_ke, besar_angsuran, ket, status, created_at) VALUES (1, ?, ?, NULL, ?, ?, '', 'Belum dibayar', NOW())");
-                $stmt->execute([$pinjaman['anggota_id'], $id, $i, $angsuran]);
+                $stmt->execute([$pinjaman['anggota_id'], $id, $i, $nominalAngsuran]);
                 $angsuranId = (int)$pdo->lastInsertId();
-                
-                // Insert into detail_angsuran
+
                 $stmt = $pdo->prepare("INSERT INTO detail_angsuran (id_angsuran, tgl_jatuh_tempo, besar_angsuran, ket, jumlah_hari_terlambat, denda_tarif_per_hari, denda_total, status_denda, tanggal_denda, tanggal_bayar_denda, created_at, updated_at) VALUES (?, ?, ?, '', 0, 0, 0, 'Belum Dibayar', NULL, NULL, NOW(), NOW())");
-                $stmt->execute([$angsuranId, $jatuhTempo, $angsuran]);
+                $stmt->execute([$angsuranId, $jatuhTempo, $nominalAngsuran]);
             }
         }
 
-        create_notification((int)$pinjaman['anggota_id'], 'Pinjaman disetujui & dicairkan', 'Pinjaman ' . $pinjaman['nomor_pinjaman'] . ' telah disetujui dan dicairkan dengan angsuran ' . format_rupiah($angsuran) . ' per bulan.');
+        create_notification((int)$pinjaman['anggota_id'], 'Pinjaman disetujui & dicairkan', 'Pinjaman ' . $pinjaman['nomor_pinjaman'] . ' telah disetujui dan dicairkan. Angsuran per bulan: ' . format_rupiah($angsuranBulat) . '. Total yang harus dibayar: ' . format_rupiah($totalBayar) . '.');
         log_activity((int)$authUser['id'], 'Menyetujui & mencairkan pinjaman ' . $pinjaman['nomor_pinjaman']);
         
         set_flash('success', 'Pinjaman berhasil disetujui & dicairkan. Jadwal angsuran bulanan telah dibuat otomatis.');

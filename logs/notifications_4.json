@@ -1,0 +1,30 @@
+[
+    {
+        "id": 1,
+        "judul": "Pinjaman disetujui & dicairkan",
+        "pesan": "Pinjaman PJ-202605-0004 telah disetujui dan dicairkan dengan angsuran Rp 42.778 per bulan.",
+        "is_read": 0,
+        "created_at": "2026-05-29 11:09:46"
+    },
+    {
+        "id": 2,
+        "judul": "Pembayaran angsuran dikonfirmasi",
+        "pesan": "Pembayaran angsuran ke-2 untuk pinjaman PJ-202605-0004 sebesar Rp 42.778 telah diterima.",
+        "is_read": 0,
+        "created_at": "2026-05-29 21:45:06"
+    },
+    {
+        "id": 3,
+        "judul": "Pembayaran angsuran dikonfirmasi",
+        "pesan": "Pembayaran angsuran ke-3 untuk pinjaman PJ-202605-0004 sebesar Rp 42.778 telah diterima.",
+        "is_read": 0,
+        "created_at": "2026-05-29 21:45:11"
+    },
+    {
+        "id": 4,
+        "judul": "Pembayaran angsuran dikonfirmasi",
+        "pesan": "Pembayaran angsuran ke-1 untuk pinjaman PJ-202605-0004 sebesar Rp 42.778 telah diterima.",
+        "is_read": 0,
+        "created_at": "2026-05-29 21:45:13"
+    }
+]

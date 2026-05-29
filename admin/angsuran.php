@@ -19,58 +19,60 @@ if (is_post()) {
     }
 
     if (in_array($action, ['confirm', 'reject'], true)) {
-        $id = (int)($_POST['id'] ?? 0);
+        $id     = (int)($_POST['id'] ?? 0);
         $status = $action === 'confirm' ? 'Diterima' : 'Ditolak';
+
         $stmt = $pdo->prepare("UPDATE angsuran SET status = ? WHERE id_angsuran = ?");
         $stmt->execute([$status, $id]);
 
-        $row = $pdo->prepare("SELECT a.besar_angsuran AS nominal, a.id_anggota, a.angsuran_ke, p.nama_pinjaman AS nomor_pinjaman, p.id_pinjaman AS pinjaman_id FROM angsuran a JOIN pinjaman p ON p.id_pinjaman = a.id_pinjaman WHERE a.id_angsuran = ?");
+        // Ambil data untuk notifikasi dan cek pelunasan
+        $row = $pdo->prepare("
+            SELECT a.besar_angsuran AS nominal, a.id_anggota, a.angsuran_ke,
+                   p.nama_pinjaman AS nomor_pinjaman, p.id_pinjaman AS pinjaman_id
+            FROM angsuran a
+            JOIN pinjaman p ON p.id_pinjaman = a.id_pinjaman
+            WHERE a.id_angsuran = ?
+        ");
         $row->execute([$id]);
         $data = $row->fetch();
-        if ($data && $status === 'Diterima') {
-            $check = $pdo->prepare("SELECT COUNT(*) AS total FROM angsuran WHERE id_pinjaman = ? AND status != 'Diterima'");
-            $check->execute([$data['pinjaman_id']]);
-            if ((int)$check->fetch()['total'] === 0) {
-                $pdo->prepare("UPDATE pinjaman SET status = 'Lunas', tgl_pelunasan = CURDATE() WHERE id_pinjaman = ?")->execute([$data['pinjaman_id']]);
-            }
-        }
+
         if ($data) {
-            log_activity((int)$authUser['id'], ($status === 'Diterima' ? 'Mengonfirmasi' : 'Menolak') . ' angsuran ' . $data['nomor_pinjaman'] . ' ke-' . $data['angsuran_ke']);
+            if ($status === 'Diterima') {
+                // Cek apakah semua angsuran sudah lunas
+                $check = $pdo->prepare("SELECT COUNT(*) AS total FROM angsuran WHERE id_pinjaman = ? AND status != 'Diterima'");
+                $check->execute([$data['pinjaman_id']]);
+                $isLunas = ((int)$check->fetch()['total'] === 0);
+
+                if ($isLunas) {
+                    $pdo->prepare("UPDATE pinjaman SET status = 'Lunas', tgl_pelunasan = CURDATE() WHERE id_pinjaman = ?")
+                        ->execute([$data['pinjaman_id']]);
+                    create_notification(
+                        (int)$data['id_anggota'],
+                        'Pinjaman Lunas!',
+                        'Selamat! Seluruh angsuran pinjaman ' . $data['nomor_pinjaman'] . ' telah terbayar lunas.'
+                    );
+                } else {
+                    create_notification(
+                        (int)$data['id_anggota'],
+                        'Pembayaran angsuran dikonfirmasi',
+                        'Pembayaran angsuran ke-' . $data['angsuran_ke'] . ' untuk pinjaman ' . $data['nomor_pinjaman'] . ' sebesar ' . format_rupiah($data['nominal']) . ' telah diterima.'
+                    );
+                }
+            } else {
+                // Status Ditolak – notifikasi anggota agar upload ulang
+                create_notification(
+                    (int)$data['id_anggota'],
+                    'Pembayaran angsuran ditolak',
+                    'Pembayaran angsuran ke-' . $data['angsuran_ke'] . ' untuk pinjaman ' . $data['nomor_pinjaman'] . ' ditolak. Silakan upload ulang bukti pembayaran yang valid.'
+                );
+            }
+
+            log_activity(
+                (int)$authUser['id'],
+                ($status === 'Diterima' ? 'Mengonfirmasi' : 'Menolak') . ' angsuran ' . $data['nomor_pinjaman'] . ' ke-' . $data['angsuran_ke']
+            );
         }
         set_flash('success', 'Status angsuran diperbarui.');
-        redirect('/admin/angsuran.php');
-    }
-
-    if ($action === 'manual') {
-        $pinjamanId = (int)($_POST['pinjaman_id'] ?? 0);
-        $nominal = (float)($_POST['nominal'] ?? 0);
-        $tanggal = $_POST['tanggal_bayar'] ?? '';
-        
-        if ($pinjamanId && $nominal > 0 && $tanggal !== '') {
-            $cekBelum = $pdo->prepare("SELECT a.angsuran_ke, a.id_angsuran FROM angsuran a WHERE a.id_pinjaman = ? AND a.status != 'Diterima' ORDER BY a.angsuran_ke ASC LIMIT 1");
-            $cekBelum->execute([$pinjamanId]);
-            $nextAngsuran = $cekBelum->fetch();
-
-            if ($nextAngsuran) {
-                $angsuranId = (int)$nextAngsuran['id_angsuran'];
-                $angsuranKe = (int)$nextAngsuran['angsuran_ke'];
-                
-                $stmt = $pdo->prepare("UPDATE angsuran SET status = 'Diterima', besar_angsuran = ?, tgl_pembayaran = ? WHERE id_angsuran = ?");
-                $stmt->execute([$nominal, $tanggal, $angsuranId]);
-                
-                $check = $pdo->prepare("SELECT COUNT(*) AS total FROM angsuran WHERE id_pinjaman = ? AND status != 'Diterima'");
-                $check->execute([$pinjamanId]);
-                if ((int)$check->fetch()['total'] === 0) {
-                    $pdo->prepare("UPDATE pinjaman SET status = 'Lunas', tgl_pelunasan = CURDATE() WHERE id_pinjaman = ?")->execute([$pinjamanId]);
-                }
-                log_activity((int)$authUser['id'], 'Input pembayaran manual angsuran pinjaman ID ' . $pinjamanId . ' sebesar ' . format_rupiah($nominal));
-                set_flash('success', "Pembayaran manual untuk angsuran ke-$angsuranKe tersimpan.");
-            } else {
-                set_flash('danger', 'Pinjaman ini sudah lunas atau tidak ada angsuran tertunda.');
-            }
-        } else {
-            set_flash('danger', 'Formulir tidak lengkap.');
-        }
         redirect('/admin/angsuran.php');
     }
 }
@@ -90,11 +92,10 @@ $stmt = $pdo->query("
     JOIN detail_angsuran da ON a.id_angsuran = da.id_angsuran
     JOIN anggota u ON a.id_anggota = u.id_anggota 
     JOIN pinjaman p ON p.id_pinjaman = a.id_pinjaman
+    WHERE a.status != 'Belum dibayar'
     ORDER BY a.created_at DESC
 ");
 $angsuran = $stmt->fetchAll();
-
-$pinjamanList = $pdo->query("SELECT id_pinjaman AS id, nama_pinjaman AS nomor_pinjaman FROM pinjaman WHERE status IN ('Disetujui', 'Dicairkan')")->fetchAll();
 
 $dendaRows = $pdo->query("
     SELECT 
@@ -123,10 +124,15 @@ $role = 'admin';
 ?>
 <?php require __DIR__ . '/../includes/dashboard_top.php'; ?>
 
-<div class="page-header">
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div>
         <h1 class="page-title">Manajemen Angsuran</h1>
         <p class="page-sub">Konfirmasi pembayaran, pantau jatuh tempo, dan kelola denda keterlambatan.</p>
+    </div>
+    <div>
+        <a href="<?= base_url('/admin/bayar-manual.php') ?>" class="btn btn-primary" style="background:linear-gradient(135deg,var(--primary),var(--primary-light)); border:none;">
+            <i class="bi bi-cash-coin me-1"></i>Input Bayar Manual
+        </a>
     </div>
 </div>
 
@@ -181,7 +187,7 @@ $role = 'admin';
 </div>
 
 <div class="row g-3">
-    <div class="col-lg-8">
+    <div class="col-lg-12">
         <div class="panel">
             <div class="panel-header">
                 <span class="panel-title"><i class="bi bi-calendar-check me-2 text-primary-custom"></i>Data Angsuran</span>
@@ -192,10 +198,8 @@ $role = 'admin';
                     <tr>
                         <th>Pinjaman</th>
                         <th>Anggota</th>
-                        <th>Angsuran Ke</th>
+                        <th>Angsuran</th>
                         <th>Nominal</th>
-                        <th>Jatuh Tempo</th>
-                        <th>Tanggal Bayar</th>
                         <th>Status</th>
                         <th>Bukti</th>
                         <th>Aksi</th>
@@ -206,65 +210,52 @@ $role = 'admin';
                         <tr>
                             <td><?= e($row['nomor_pinjaman']); ?></td>
                             <td><?= e($row['nama']); ?></td>
-                            <td><?= e($row['angsuran_ke']); ?></td>
-                            <td><?= format_rupiah($row['nominal']); ?></td>
-                            <td><?= e($row['jatuh_tempo'] ?: '-'); ?></td>
-                            <td><?= e($row['tanggal_bayar'] ?: '-'); ?></td>
-                            <td><span class="badge-status <?= status_badge_class($row['status']); ?>"><?= e($row['status']); ?></span></td>
                             <td>
-                                <?php if (!empty($row['bukti_transfer'])): ?>
-                                    <a href="<?= base_url('/uploads/bukti_angsuran/' . e($row['bukti_transfer'])) ?>" target="_blank">Lihat</a>
-                                <?php else: ?>
-                                    -
+                                Ke-<?= e($row['angsuran_ke']); ?>
+                                <div style="font-size: 0.72rem; color: var(--text-muted); white-space: nowrap;">
+                                    J.T: <?= $row['jatuh_tempo'] ? e(date('d/m/Y', strtotime($row['jatuh_tempo']))) : '-'; ?>
+                                </div>
+                            </td>
+                            <td class="fw-bold"><?= format_rupiah($row['nominal']); ?></td>
+                            <td>
+                                <span class="badge-status <?= status_badge_class($row['status']); ?>"><?= e($row['status']); ?></span>
+                                <?php if ($row['tanggal_bayar']): ?>
+                                    <div style="font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; margin-top: 2px;">
+                                        Bayar: <?= e(date('d/m/Y', strtotime($row['tanggal_bayar']))); ?>
+                                    </div>
                                 <?php endif; ?>
                             </td>
-                            <td class="d-flex gap-2">
-                                <?php if ($row['status'] === 'Menunggu konfirmasi'): ?>
-                                    <form method="post">
-                                        <input type="hidden" name="id" value="<?= e($row['id']); ?>">
-                                        <button class="btn btn-sm btn-success" name="action" value="confirm">Konfirmasi</button>
-                                    </form>
-                                    <form method="post">
-                                        <input type="hidden" name="id" value="<?= e($row['id']); ?>">
-                                        <button class="btn btn-sm btn-danger" name="action" value="reject">Tolak</button>
-                                    </form>
+                            <td>
+                                <?php if (!empty($row['bukti_transfer'])): ?>
+                                    <a href="<?= base_url('/uploads/bukti_angsuran/' . e($row['bukti_transfer'])) ?>" target="_blank" class="btn btn-sm btn-outline-primary" style="padding: 2px 6px; font-size: 0.75rem;">Lihat</a>
+                                <?php else: ?>
+                                    <span class="text-muted">-</span>
                                 <?php endif; ?>
+                            </td>
+                            <td>
+                                <div class="d-flex gap-1">
+                                    <?php if ($row['status'] === 'Menunggu konfirmasi'): ?>
+                                        <form method="post" style="display:inline;">
+                                            <input type="hidden" name="id" value="<?= e($row['id']); ?>">
+                                            <button class="btn btn-sm btn-success" name="action" value="confirm" style="padding: 2px 8px; font-size: 0.75rem;">Setuju</button>
+                                        </form>
+                                        <form method="post" style="display:inline;">
+                                            <input type="hidden" name="id" value="<?= e($row['id']); ?>">
+                                            <button class="btn btn-sm btn-danger" name="action" value="reject" style="padding: 2px 8px; font-size: 0.75rem;">Tolak</button>
+                                        </form>
+                                    <?php else: ?>
+                                        <span class="text-muted">-</span>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
                     <?php if (empty($angsuran)): ?>
-                        <tr><td colspan="9" class="text-muted">Belum ada data.</td></tr>
+                        <tr><td colspan="7" class="text-muted">Belum ada data.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
             </div>
-        </div>
-    </div>
-    <div class="col-lg-4">
-        <div class="form-section">
-            <h5 class="mb-3">Input Pembayaran Manual</h5>
-            <form method="post">
-                <input type="hidden" name="action" value="manual">
-                <div class="mb-2">
-                    <label class="form-label">Pinjaman</label>
-                    <select name="pinjaman_id" class="form-select" required>
-                        <option value="">Pilih Pinjaman</option>
-                        <?php foreach ($pinjamanList as $p): ?>
-                            <option value="<?= e($p['id']); ?>"><?= e($p['nomor_pinjaman']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Sistem akan otomatis memilih angsuran terkecil yang belum dibayar.</div>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label">Nominal</label>
-                    <input type="text" name="nominal" data-type="currency" class="form-control" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Tanggal Bayar</label>
-                    <input type="date" name="tanggal_bayar" class="form-control" required>
-                </div>
-                <button class="btn btn-primary w-100">Simpan</button>
-            </form>
         </div>
     </div>
 </div>

@@ -39,7 +39,7 @@ if (is_post()) {
         if (!in_array($jenis, ['pokok', 'wajib', 'sukarela'], true)) {
             $jenis = 'sukarela';
         }
-        $nominal   = (float)($_POST['nominal'] ?? 0);
+        $nominal   = parse_currency($_POST['nominal'] ?? 0);
         $keterangan = trim($_POST['keterangan'] ?? '');
         if ($userId && $nominal > 0) {
             $pdo->prepare("INSERT INTO simpanan (id_anggota, nm_simpanan, besar_simpanan, bukti_transfer, status, ket, tgl_simpanan, created_at) VALUES (?, ?, ?, '', 'Diterima', ?, CURDATE(), NOW())")->execute([$userId, $jenis, $nominal, $keterangan]);

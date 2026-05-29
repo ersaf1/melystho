@@ -13,3 +13,36 @@
 [2026-05-26 00:52:06] [User ID: 1] Menyetujui & mencairkan pinjaman PJ-202605-0001
 [2026-05-26 00:53:40] [User ID: 2] Mengajukan pinjaman PJ-202605-0002 sebesar Rp 25.000.000
 [2026-05-26 00:53:46] [User ID: 1] Menyetujui & mencairkan pinjaman PJ-202605-0002
+[2026-05-26 01:08:50] [User ID: 2] Membayar angsuran sebesar Rp 1
+[2026-05-26 01:12:56] [User ID: 2] Membayar angsuran sebesar Rp 245.833.334
+[2026-05-26 01:13:11] [User ID: 1] Menolak angsuran PJ-202605-0002 ke-1
+[2026-05-26 01:13:13] [User ID: 1] Mengonfirmasi angsuran PJ-202605-0002 ke-2
+[2026-05-29 10:49:18] [User ID: 1] Login ke sistem (Admin)
+[2026-05-29 10:51:03] [User ID: 1] Login ke sistem (Anggota)
+[2026-05-29 10:57:21] [User ID: 3] Registrasi anggota baru (Otomatis Aktif)
+[2026-05-29 10:57:32] [User ID: 3] Login ke sistem (Anggota)
+[2026-05-29 10:58:40] [User ID: 3] Mengajukan simpanan Sukarela sebesar Rp 1.000.000
+[2026-05-29 10:59:47] [User ID: 1] Login ke sistem (Admin)
+[2026-05-29 10:59:59] [User ID: 1] Menyetujui simpanan user
+[2026-05-29 11:01:04] [User ID: 3] Mengajukan pinjaman PJ-202605-0003 sebesar Rp 1.000.000
+[2026-05-29 11:01:20] [User ID: 1] Menyetujui & mencairkan pinjaman PJ-202605-0003
+[2026-05-29 11:03:18] [User ID: 3] Membayar angsuran sebesar Rp 181.668
+[2026-05-29 11:03:42] [User ID: 1] Mengonfirmasi angsuran PJ-202605-0003 ke-1
+[2026-05-29 11:08:20] [User ID: 4] Registrasi anggota baru (Otomatis Aktif)
+[2026-05-29 11:08:29] [User ID: 4] Login ke sistem (Anggota)
+[2026-05-29 11:08:45] [User ID: 4] Mengajukan simpanan Sukarela sebesar Rp 1.000.000
+[2026-05-29 11:09:03] [User ID: 1] Menyetujui simpanan user1
+[2026-05-29 11:09:29] [User ID: 4] Mengajukan pinjaman PJ-202605-0004 sebesar Rp 1.000.000
+[2026-05-29 11:09:46] [User ID: 1] Menyetujui & mencairkan pinjaman PJ-202605-0004
+[2026-05-29 21:11:39] [User ID: 3] Login ke sistem (Anggota)
+[2026-05-29 21:16:25] [User ID: 1] Login ke sistem (Admin)
+[2026-05-29 21:21:15] [User ID: 4] Login ke sistem (Anggota)
+[2026-05-29 21:27:19] [User ID: 4] Membayar angsuran sebesar Rp 42.778
+[2026-05-29 21:27:30] [User ID: 4] Membayar angsuran sebesar Rp 42.778
+[2026-05-29 21:28:16] [User ID: 4] Membayar angsuran sebesar Rp 42.778
+[2026-05-29 21:28:30] [User ID: 1] Login ke sistem (Admin)
+[2026-05-29 21:45:06] [User ID: 1] Mengonfirmasi angsuran PJ-202605-0004 ke-2
+[2026-05-29 21:45:11] [User ID: 1] Mengonfirmasi angsuran PJ-202605-0004 ke-3
+[2026-05-29 21:45:13] [User ID: 1] Mengonfirmasi angsuran PJ-202605-0004 ke-1
+[2026-05-29 21:56:36] [User ID: 1] Input pembayaran manual angsuran ke-3 pinjaman ID 2 sebesar Rp 2.458.333
+[2026-05-29 22:09:28] [User ID: 1] Bayar manual angsuran ke-4 pinjaman PJ-202605-0002 sebesar Rp 2.458.333

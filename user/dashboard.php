@@ -39,7 +39,7 @@ $page_title = 'Dashboard';
 $role = 'user';
 
 /* Badge helper */
-function badgeClass($status) {
+function badgeClass(string $status): string {
     $map = [
         'Menunggu Verifikasi'  => 'badge-menunggu',
         'Menunggu konfirmasi'  => 'badge-menunggu',

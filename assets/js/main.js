@@ -277,13 +277,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ─── DYNAMIC CURRENCY FORMATTING (RUPIAH THOUSANDS SEPARATOR) ───
   const formatCurrency = (val) => {
-    const clean = val.toString().replace(/\D/g, '');
-    if (clean === '') return '';
-    return new Intl.NumberFormat('id-ID').format(parseInt(clean, 10));
+    let str = val.toString();
+    
+    // Jika input berupa float standard dari backend (misal "42777.78"), ubah titik desimal ke koma terlebih dahulu
+    if (str.includes('.') && !str.includes(',')) {
+      str = str.replace('.', ',');
+    }
+    
+    const parts = str.split(',');
+    
+    // Bersihkan bagian integer (hanya angka)
+    const integerPart = parts[0].replace(/\D/g, '');
+    if (integerPart === '') return '';
+    
+    let formatted = new Intl.NumberFormat('id-ID').format(parseInt(integerPart, 10));
+    
+    // Jika ada bagian desimal/pecahan, bersihkan dan gabungkan (maksimal 2 digit pecahan)
+    if (parts.length > 1) {
+      const decimalPart = parts[1].replace(/\D/g, '').substring(0, 2);
+      formatted += ',' + decimalPart;
+    }
+    
+    return formatted;
   };
 
   const unformatCurrency = (str) => {
-    return str.replace(/\./g, '');
+    // Hapus semua titik (pemisah ribuan)
+    let clean = str.replace(/\./g, '');
+    // Ubah koma menjadi titik (penanda desimal standar database/PHP)
+    clean = clean.replace(/,/g, '.');
+    return clean;
   };
 
   // Find and format all currency inputs
@@ -310,7 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Intercept all form submits to strip out dots so PHP gets raw numbers
+  // Intercept all form submits to strip out dots so PHP gets raw numbers (with standard decimal dots)
   document.querySelectorAll('form').forEach(form => {
     form.addEventListener('submit', () => {
       form.querySelectorAll('input[data-type="currency"]').forEach(input => {

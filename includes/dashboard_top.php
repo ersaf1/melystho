@@ -65,6 +65,9 @@ $notificationUrl     = $role === 'admin' ? base_url('/admin/notifikasi.php') : b
         <a href="<?= base_url('/admin/angsuran.php') ?>" class="sidebar-link" id="sl-angsuran">
             <i class="bi bi-calendar-check"></i>Angsuran
         </a>
+        <a href="<?= base_url('/admin/bayar-manual.php') ?>" class="sidebar-link" id="sl-bayar-manual">
+            <i class="bi bi-cash-coin"></i>Bayar Manual
+        </a>
 
         <div class="sidebar-section mt-2"><span class="sidebar-section-label">Lainnya</span></div>
         <a href="<?= base_url('/admin/laporan.php') ?>" class="sidebar-link" id="sl-laporan">

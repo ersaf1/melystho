@@ -1,6 +1,6 @@
 <?php
 
-function e($value): string
+function e(mixed $value): string
 {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
@@ -55,9 +55,41 @@ function get_flash(): ?array
     return $flash;
 }
 
-function format_rupiah($angka): string
+function format_rupiah(mixed $angka): string
 {
     return 'Rp ' . number_format((float)$angka, 0, ',', '.');
+}
+
+function parse_currency(mixed $val): float
+{
+    if (empty($val)) {
+        return 0.0;
+    }
+    $val = (string)$val;
+    
+    // Jika ada koma, diasumsikan sebagai pecahan desimal gaya Indonesia (contoh: 42.777,78 atau 42777,78)
+    if (strpos($val, ',') !== false) {
+        $val = str_replace('.', '', $val);
+        $val = str_replace(',', '.', $val);
+        return (float)$val;
+    }
+    
+    // Jika ada lebih dari satu titik, itu adalah pemisah ribuan (contoh: 1.000.000)
+    if (substr_count($val, '.') > 1) {
+        $val = str_replace('.', '', $val);
+        return (float)$val;
+    }
+    
+    // Jika ada satu titik
+    if (substr_count($val, '.') === 1) {
+        $parts = explode('.', $val);
+        // Jika setelah titik ada tepat 3 digit, kemungkinan besar itu ribuan (contoh: 1.000)
+        if (strlen($parts[1]) === 3) {
+            $val = str_replace('.', '', $val);
+        }
+    }
+    
+    return (float)$val;
 }
 
 function upload_file(array $file, string $targetDir, array $allowedMime, int $maxSize = 5242880): ?string
@@ -103,7 +135,7 @@ function get_setting(string $name, $default = null)
     return isset($settings[$name]) ? $settings[$name] : $default;
 }
 
-function set_setting(string $name, $value): void
+function set_setting(string $name, mixed $value): void
 {
     $file = __DIR__ . '/settings.php';
     $settings = [];

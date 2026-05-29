@@ -61,7 +61,7 @@ $dendaList = $dendaStmt->fetchAll();
 
 if (is_post()) {
     $angsuranId = (int)($_POST['angsuran_id'] ?? 0);
-    $nominal = (float)($_POST['nominal'] ?? 0);
+    $nominal = parse_currency($_POST['nominal'] ?? 0);
     $tanggal = $_POST['tanggal_bayar'] ?? '';
     $catatan = trim($_POST['catatan'] ?? '');
 
@@ -82,17 +82,28 @@ if (is_post()) {
     }
 
     if (empty($errors)) {
-        $stmt = $pdo->prepare("SELECT id_angsuran AS id FROM angsuran WHERE id_angsuran = ? AND id_anggota = ?");
+        $stmt = $pdo->prepare("
+            SELECT a.id_angsuran AS id, a.besar_angsuran AS nominal, da.denda_total AS total_denda
+            FROM angsuran a
+            JOIN detail_angsuran da ON a.id_angsuran = da.id_angsuran
+            WHERE a.id_angsuran = ? AND a.id_anggota = ?
+        ");
         $stmt->execute([$angsuranId, $user['id']]);
-        if (!$stmt->fetch()) {
+        $row = $stmt->fetch();
+        if (!$row) {
             $errors[] = 'Angsuran tidak valid.';
         } else {
-            $stmt = $pdo->prepare("UPDATE angsuran SET tgl_pembayaran = ?, bukti_transfer = ?, besar_angsuran = ?, status = 'Menunggu konfirmasi', ket = ? WHERE id_angsuran = ?");
-            $stmt->execute([$tanggal, $bukti, $nominal, $catatan, $angsuranId]);
-            log_activity((int)$user['id'], 'Membayar angsuran sebesar ' . format_rupiah($nominal));
-            notify_admins('Angsuran baru', $user['nama'] . ' mengunggah pembayaran angsuran sebesar ' . format_rupiah($nominal) . '.');
-            set_flash('success', 'Pembayaran berhasil diupload. Menunggu konfirmasi admin.');
-            redirect('/user/bayar-angsuran.php');
+            $minRequired = (float)$row['nominal'] + (float)$row['total_denda'];
+            if ($nominal < $minRequired) {
+                $errors[] = 'Nominal pembayaran Anda (' . format_rupiah($nominal) . ') kurang dari jumlah minimal yang harus dibayar yaitu ' . format_rupiah($minRequired) . '.';
+            } else {
+                $stmt = $pdo->prepare("UPDATE angsuran SET tgl_pembayaran = ?, bukti_transfer = ?, besar_angsuran = ?, status = 'Menunggu konfirmasi', ket = ? WHERE id_angsuran = ?");
+                $stmt->execute([$tanggal, $bukti, $nominal, $catatan, $angsuranId]);
+                log_activity((int)$user['id'], 'Membayar angsuran sebesar ' . format_rupiah($nominal));
+                notify_admins('Angsuran baru', $user['nama'] . ' mengunggah pembayaran angsuran sebesar ' . format_rupiah($nominal) . '.');
+                set_flash('success', 'Pembayaran berhasil diupload. Menunggu konfirmasi admin.');
+                redirect('/user/bayar-angsuran.php');
+            }
         }
     }
 }
@@ -150,15 +161,39 @@ $role = 'user';
                 <select name="angsuran_id" class="form-select" required>
                     <option value="">Pilih angsuran</option>
                     <?php foreach ($angsuranList as $row): ?>
-                        <option value="<?= e($row['id']); ?>">
+                        <?php 
+                        $total = (float)$row['nominal'] + (float)$row['total_denda'];
+                        ?>
+                        <option value="<?= e($row['id']); ?>" 
+                                data-nominal="<?= (float)$row['nominal']; ?>" 
+                                data-denda="<?= (float)$row['total_denda']; ?>" 
+                                data-total="<?= $total; ?>">
                             <?= e($row['nomor_pinjaman']); ?> - Angsuran <?= e($row['angsuran_ke']); ?> (<?= format_rupiah($row['nominal']); ?>)<?= !empty($row['total_denda']) ? ' + denda ' . format_rupiah($row['total_denda']) : ''; ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
+                
+                <!-- Info block for minimal payment -->
+                <div id="minPayInfo" class="mt-3 p-3 rounded border bg-light d-none" style="border-left: 4px solid var(--primary) !important;">
+                    <div class="d-flex justify-content-between mb-1" style="font-size: 0.9rem; color: var(--text-muted);">
+                        <span>Angsuran Pokok:</span>
+                        <strong id="infoNominal">Rp 0</strong>
+                    </div>
+                    <div id="infoDendaRow" class="d-flex justify-content-between mb-1 d-none" style="font-size: 0.9rem; color: var(--accent-red);">
+                        <span>Denda Keterlambatan:</span>
+                        <strong id="infoDenda">Rp 0</strong>
+                    </div>
+                    <hr class="my-2">
+                    <div class="d-flex justify-content-between">
+                        <strong style="color: var(--primary);">Minimal Pembayaran:</strong>
+                        <strong id="infoTotal" style="color: var(--primary); font-size: 1.1rem;">Rp 0</strong>
+                    </div>
+                </div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">Nominal Bayar</label>
-                <input type="text" name="nominal" data-type="currency" class="form-control" required>
+                <input type="text" name="nominal" id="nominal_bayar" data-type="currency" class="form-control" required>
+                <div class="form-text" id="nominalHelp">Prefill otomatis dengan nilai minimal bayar saat angsuran dipilih.</div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">Tanggal Bayar</label>
@@ -176,5 +211,56 @@ $role = 'user';
         <button class="btn btn-primary mt-4">Kirim</button>
     </form>
 </div>
+
+<?php
+$extra_js = "<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const selectEl = document.querySelector('select[name=\"angsuran_id\"]');
+    const minPayInfo = document.getElementById('minPayInfo');
+    const infoNominal = document.getElementById('infoNominal');
+    const infoDendaRow = document.getElementById('infoDendaRow');
+    const infoDenda = document.getElementById('infoDenda');
+    const infoTotal = document.getElementById('infoTotal');
+    const nominalInput = document.getElementById('nominal_bayar');
+
+    function formatRupiah(value) {
+        return new Intl.NumberFormat('id-ID', { 
+            style: 'currency', 
+            currency: 'IDR',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(value || 0);
+    }
+
+    if (selectEl) {
+        selectEl.addEventListener('change', () => {
+            const selectedOpt = selectEl.options[selectEl.selectedIndex];
+            if (!selectedOpt || selectedOpt.value === '') {
+                minPayInfo.classList.add('d-none');
+                nominalInput.value = '';
+                return;
+            }
+
+            const nominal = parseFloat(selectedOpt.getAttribute('data-nominal') || 0);
+            const denda = parseFloat(selectedOpt.getAttribute('data-denda') || 0);
+            const total = parseFloat(selectedOpt.getAttribute('data-total') || 0);
+
+            infoNominal.textContent = formatRupiah(nominal);
+            if (denda > 0) {
+                infoDenda.textContent = formatRupiah(denda);
+                infoDendaRow.classList.remove('d-none');
+            } else {
+                infoDendaRow.classList.add('d-none');
+            }
+            infoTotal.textContent = formatRupiah(total);
+            minPayInfo.classList.remove('d-none');
+
+            // Prefill with the formatted total amount (currency parser handles dots)
+            nominalInput.value = new Intl.NumberFormat('id-ID').format(total);
+        });
+    }
+});
+</script>";
+?>
 
 <?php require __DIR__ . '/../includes/dashboard_bottom.php'; ?>

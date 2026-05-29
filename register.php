@@ -7,6 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 $errors = [];
 if (is_post()) {
+    $pdo = db();
     $data = [
         'nama'             => trim($_POST['nama'] ?? ''),
         'no_hp'            => trim($_POST['no_hp'] ?? ''),
@@ -37,7 +38,6 @@ if (is_post()) {
     }
 
     if (empty($errors)) {
-        $pdo = db();
         
         // Check if email already registered in anggota or petugas_koperasi
         $stmt = $pdo->prepare("SELECT id_anggota FROM anggota WHERE email = ? UNION SELECT id_petugas FROM petugas_koperasi WHERE email = ?");
