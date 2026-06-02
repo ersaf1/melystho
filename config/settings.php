@@ -7,4 +7,5 @@ return [
     'denda_per_hari'          => 5000,
     'reminder_days_before_due'=> 3,
     'simpanan_wajib_minimal'  => 50000,   // Minimal simpanan wajib Rp50.000/bulan
+    'modal_awal_koperasi'     => 100000000, // Modal awal koperasi (Rp 100.000.000)
 ];

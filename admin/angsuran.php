@@ -38,10 +38,16 @@ if (is_post()) {
 
         if ($data) {
             if ($status === 'Diterima') {
-                // Cek apakah semua angsuran sudah lunas
-                $check = $pdo->prepare("SELECT COUNT(*) AS total FROM angsuran WHERE id_pinjaman = ? AND status != 'Diterima'");
+                // Cek apakah semua angsuran sudah lunas (bandingkan jumlah Diterima dengan tenor)
+                $stTenor = $pdo->prepare("SELECT tenor FROM pinjaman WHERE id_pinjaman = ?");
+                $stTenor->execute([$data['pinjaman_id']]);
+                $tenor = (int)$stTenor->fetchColumn();
+
+                $check = $pdo->prepare("SELECT COUNT(*) AS total FROM angsuran WHERE id_pinjaman = ? AND status = 'Diterima'");
                 $check->execute([$data['pinjaman_id']]);
-                $isLunas = ((int)$check->fetch()['total'] === 0);
+                $sudahDiterima = (int)$check->fetch()['total'];
+
+                $isLunas = ($sudahDiterima === $tenor);
 
                 if ($isLunas) {
                     $pdo->prepare("UPDATE pinjaman SET status = 'Lunas', tgl_pelunasan = CURDATE() WHERE id_pinjaman = ?")

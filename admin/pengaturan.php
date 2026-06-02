@@ -37,12 +37,14 @@ if (is_post()) {
         $dendaPerHari = max(0, (float)($_POST['denda_per_hari'] ?? 5000));
         $reminderDays = max(0, (int)($_POST['reminder_days_before_due'] ?? 3));
         $simpananWajibMinimal = max(0, (float)($_POST['simpanan_wajib_minimal'] ?? 50000));
+        $modalAwal = max(0, (float)($_POST['modal_awal_koperasi'] ?? 100000000));
         set_setting('default_bunga_persen', $defaultBunga);
         set_setting('max_active_loans', $maxActive);
         set_setting('max_loan_amount', $maxLoanAmount);
         set_setting('denda_per_hari', $dendaPerHari);
         set_setting('reminder_days_before_due', $reminderDays);
         set_setting('simpanan_wajib_minimal', $simpananWajibMinimal);
+        set_setting('modal_awal_koperasi', $modalAwal);
         log_activity((int)$authUser['id'], 'Memperbarui pengaturan koperasi');
         set_flash('success', 'Pengaturan disimpan.');
     }
@@ -55,6 +57,7 @@ $maxLoanAmount = get_setting('max_loan_amount', 50000000);
 $dendaPerHari = get_setting('denda_per_hari', 5000);
 $reminderDays = get_setting('reminder_days_before_due', 3);
 $simpananWajibMinimal = get_setting('simpanan_wajib_minimal', 50000);
+$modalAwal = get_setting('modal_awal_koperasi', 100000000);
 
 $page_title = 'Pengaturan';
 $role = 'admin';
@@ -112,6 +115,14 @@ $role = 'admin';
                                 <input type="text" name="simpanan_wajib_minimal" data-type="currency" class="form-control" value="<?= e($simpananWajibMinimal); ?>">
                             </div>
                             <div class="form-text">Minimal setoran simpanan wajib per bulan.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Modal Awal / Likuiditas Koperasi</label>
+                            <div class="input-group">
+                                <span class="input-group-text">Rp</span>
+                                <input type="text" name="modal_awal_koperasi" data-type="currency" class="form-control" value="<?= e($modalAwal); ?>">
+                            </div>
+                            <div class="form-text">Modal/dana awal koperasi yang tersedia sebelum simpanan anggota masuk.</div>
                         </div>
                     </div>
                     <button class="btn-primary-custom mt-4" type="submit"><i class="bi bi-save"></i>Simpan Pengaturan</button>

@@ -16,24 +16,66 @@ if (!$pinjaman) {
 }
 sync_late_fines((int)$user['id']);
 
-$scheduleStmt = $pdo->prepare("
+$stmtPaid = $pdo->prepare("
     SELECT 
         a.id_angsuran AS id,
         a.angsuran_ke,
-        da.tgl_jatuh_tempo AS jatuh_tempo,
         a.besar_angsuran AS nominal,
         a.tgl_pembayaran AS tanggal_bayar,
         a.status,
+        da.tgl_jatuh_tempo AS jatuh_tempo,
         da.jumlah_hari_terlambat AS jumlah_hari,
         da.denda_total,
         da.status_denda AS status_denda
     FROM angsuran a
-    JOIN detail_angsuran da ON a.id_angsuran = da.id_angsuran
+    LEFT JOIN detail_angsuran da ON da.id_angsuran = a.id_angsuran
     WHERE a.id_pinjaman = ?
-    ORDER BY a.angsuran_ke ASC
 ");
-$scheduleStmt->execute([$id]);
-$schedule = $scheduleStmt->fetchAll();
+$stmtPaid->execute([$id]);
+$paidMap = [];
+foreach ($stmtPaid->fetchAll() as $r) {
+    $paidMap[(int)$r['angsuran_ke']] = $r;
+}
+
+$schedule = [];
+if (in_array($pinjaman['status'], ['Dicairkan', 'Lunas'], true) && !empty($pinjaman['tgl_pinjaman'])) {
+    $tenor = (int)$pinjaman['tenor'];
+    $tglPinjam = $pinjaman['tgl_pinjaman'];
+    $angsuranPerBulan = (float)$pinjaman['angsuran_per_bulan'];
+    $totalBayar = (float)$pinjaman['total_bayar'];
+    $angsuranTerakhir = round($totalBayar - ($angsuranPerBulan * ($tenor - 1)), 2);
+
+    for ($i = 1; $i <= $tenor; $i++) {
+        $jatuhTempo = date('Y-m-d', strtotime("+{$i} month", strtotime($tglPinjam)));
+        $expectedNominal = ($i === $tenor) ? $angsuranTerakhir : $angsuranPerBulan;
+
+        if (isset($paidMap[$i])) {
+            $schedule[] = [
+                'id' => $paidMap[$i]['id'],
+                'angsuran_ke' => $i,
+                'jatuh_tempo' => $paidMap[$i]['jatuh_tempo'] ?: $jatuhTempo,
+                'nominal' => $paidMap[$i]['nominal'],
+                'tanggal_bayar' => $paidMap[$i]['tanggal_bayar'],
+                'status' => $paidMap[$i]['status'],
+                'jumlah_hari' => $paidMap[$i]['jumlah_hari'],
+                'total_denda' => $paidMap[$i]['denda_total'],
+                'status_denda' => $paidMap[$i]['status_denda'],
+            ];
+        } else {
+            $schedule[] = [
+                'id' => null,
+                'angsuran_ke' => $i,
+                'jatuh_tempo' => $jatuhTempo,
+                'nominal' => $expectedNominal,
+                'tanggal_bayar' => null,
+                'status' => 'Belum dibayar',
+                'jumlah_hari' => 0,
+                'total_denda' => 0.0,
+                'status_denda' => 'Belum Dibayar',
+            ];
+        }
+    }
+}
 
 $historyStmt = $pdo->prepare("
     SELECT 

@@ -24,13 +24,18 @@ $activeLoans   = (int)$rowAktif['total'];
 $sumPinjamanAktif = (float)$rowAktif['sum_nominal'];
 
 // ── Dana koperasi yang tersedia ──────────────────────────────────────────────
+$modalAwal = (float)get_setting('modal_awal_koperasi', 100000000);
+
 $stmt = $pdo->query("SELECT COALESCE(SUM(besar_simpanan), 0) AS total FROM simpanan WHERE status = 'Diterima'");
 $totalSimpananKoperasi = (float)($stmt->fetch()['total'] ?? 0);
 
 $stmt = $pdo->query("SELECT COALESCE(SUM(besar_pinjaman), 0) AS total FROM pinjaman WHERE status IN ('Disetujui', 'Dicairkan')");
 $totalPinjamanAktifKoperasi = (float)($stmt->fetch()['total'] ?? 0);
 
-$danaAvailable = $totalSimpananKoperasi - $totalPinjamanAktifKoperasi;
+$stmt = $pdo->query("SELECT COALESCE(SUM(besar_angsuran), 0) AS total FROM angsuran WHERE status = 'Diterima'");
+$totalAngsuranKoperasi = (float)($stmt->fetch()['total'] ?? 0);
+
+$danaAvailable = $modalAwal + $totalSimpananKoperasi + $totalAngsuranKoperasi - $totalPinjamanAktifKoperasi;
 
 // ── Validasi status anggota ───────────────────────────────────────────────────
 $isVerified   = in_array($user['status'], ['Disetujui', 'Aktif'], true);
@@ -246,20 +251,17 @@ $role = 'user';
 $bungaJS = (float)get_setting('default_bunga_persen', 1.5);
 $extra_js = "<script>
 document.addEventListener('DOMContentLoaded', () => {
-    const nominalEl = document.getElementById('nominal');
-    const tenorEl   = document.getElementById('tenor');
-    const bungaVal  = {$bungaJS};
-
+    const nominalEl    = document.getElementById('nominal');
+    const tenorEl      = document.getElementById('tenor');
+    const bungaVal     = {$bungaJS};
     const totalBungaEl = document.getElementById('total_bunga');
     const totalBayarEl = document.getElementById('total_bayar');
     const angsuranEl   = document.getElementById('angsuran');
-    const submitBtn    = document.getElementById('submitBtn');
 
-    // Tabel tenor sesuai nominal
     const TENOR_RULES = [
-        { maxNominal: 1_000_000,         tenors: [3, 6] },
-        { maxNominal: 3_000_000,         tenors: [6, 12] },
-        { maxNominal: Infinity,          tenors: [12, 24] },
+        { maxNominal: 1_000_000, tenors: [3, 6]   },
+        { maxNominal: 3_000_000, tenors: [6, 12]  },
+        { maxNominal: Infinity,  tenors: [12, 24] },
     ];
 
     function formatRupiah(value) {
@@ -269,9 +271,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }).format(value || 0);
     }
 
-    function parseNominal(str) {
-        // Remove thousand separators (dots in id-ID format) and parse
-        return parseFloat((str || '').replace(/\./g, '').replace(',', '.')) || 0;
+    function getNominalValue() {
+        return parseInt((nominalEl.value || '').replace(/\D/g, ''), 10) || 0;
     }
 
     function updateTenorOptions(nominal) {
@@ -280,9 +281,8 @@ document.addEventListener('DOMContentLoaded', () => {
             tenorEl.innerHTML = '<option value=\"\">— Masukkan nominal dulu —</option>';
             return;
         }
-        const rule = TENOR_RULES.find(r => nominal <= r.maxNominal);
+        const rule   = TENOR_RULES.find(r => nominal <= r.maxNominal);
         const tenors = rule ? rule.tenors : [12, 24];
-
         tenorEl.innerHTML = '<option value=\"\">— Pilih Tenor —</option>';
         tenors.forEach(t => {
             const opt = document.createElement('option');
@@ -293,35 +293,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function hitung() {
-        const n = parseNominal(nominalEl.value);
+        const n = getNominalValue();
         const t = parseInt(tenorEl.value || 0);
-
         if (n <= 0 || t <= 0) {
             totalBungaEl.value = '';
             totalBayarEl.value = '';
             angsuranEl.value   = '';
             return;
         }
-
         const bungaTotal = Math.round(n * (bungaVal / 100) * t * 100) / 100;
         const total      = Math.round((n + bungaTotal) * 100) / 100;
         const angs       = Math.round((total / t) * 100) / 100;
-
         totalBungaEl.value = formatRupiah(bungaTotal);
         totalBayarEl.value = formatRupiah(total);
         angsuranEl.value   = formatRupiah(angs);
     }
 
-    nominalEl.addEventListener('input', () => {
-        const n = parseNominal(nominalEl.value);
-        updateTenorOptions(n);
+    // Currency formatting is handled globally by main.js.
+    // Here we only update tenor options and recalculate on every input.
+    nominalEl.addEventListener('input', function () {
+        updateTenorOptions(getNominalValue());
         hitung();
     });
-    nominalEl.addEventListener('change', () => {
-        const n = parseNominal(nominalEl.value);
-        updateTenorOptions(n);
-        hitung();
-    });
+
     tenorEl.addEventListener('change', hitung);
 });
 </script>";

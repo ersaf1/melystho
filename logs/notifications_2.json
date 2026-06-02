@@ -12,5 +12,26 @@
         "pesan": "Pembayaran angsuran ke-4 untuk pinjaman PJ-202605-0002 sebesar Rp 2.458.333 telah berhasil dicatat oleh admin.",
         "is_read": 0,
         "created_at": "2026-05-29 22:09:28"
+    },
+    {
+        "id": 3,
+        "judul": "Pembayaran angsuran diterima (Manual)",
+        "pesan": "Pembayaran angsuran ke-1 untuk pinjaman PJ-202605-0002 sebesar Rp 1 telah berhasil dicatat oleh admin.",
+        "is_read": 0,
+        "created_at": "2026-06-01 23:46:34"
+    },
+    {
+        "id": 4,
+        "judul": "Pembayaran angsuran diterima (Manual)",
+        "pesan": "Pembayaran angsuran ke-5 untuk pinjaman PJ-202605-0002 sebesar Rp 2.458.333 telah berhasil dicatat oleh admin.",
+        "is_read": 0,
+        "created_at": "2026-06-01 23:46:49"
+    },
+    {
+        "id": 5,
+        "judul": "Pembayaran angsuran diterima (Manual)",
+        "pesan": "Pembayaran angsuran ke-6 untuk pinjaman PJ-202605-0002 sebesar Rp 2.458.333 telah berhasil dicatat oleh admin.",
+        "is_read": 0,
+        "created_at": "2026-06-01 23:46:55"
     }
 ]

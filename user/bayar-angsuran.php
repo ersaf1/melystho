@@ -9,38 +9,96 @@ $errors = [];
 sync_late_fines((int)$user['id']);
 sync_due_reminders((int)$user['id']);
 
-$stmt = $pdo->prepare("SELECT id_pinjaman AS id, nama_pinjaman AS nomor_pinjaman FROM pinjaman WHERE id_anggota = ? AND status IN ('Disetujui', 'Dicairkan')");
+$stmt = $pdo->prepare("SELECT id_pinjaman AS id, nama_pinjaman AS nomor_pinjaman, tgl_pinjaman, tenor, besar_pinjaman, total_bayar, angsuran_per_bulan FROM pinjaman WHERE id_anggota = ? AND status = 'Dicairkan'");
 $stmt->execute([$user['id']]);
 $pinjamanList = $stmt->fetchAll();
 
 $angsuranList = [];
-if (!empty($pinjamanList)) {
-    $stmt = $pdo->prepare("
-        SELECT 
-            a.id_angsuran AS id,
-            a.angsuran_ke,
-            a.besar_angsuran AS nominal,
-            da.tgl_jatuh_tempo AS jatuh_tempo,
-            p.nama_pinjaman AS nomor_pinjaman,
-            da.denda_total AS total_denda,
-            da.status_denda AS status_denda
-        FROM angsuran a
-        JOIN detail_angsuran da ON a.id_angsuran = da.id_angsuran
-        JOIN pinjaman p ON p.id_pinjaman = a.id_pinjaman
-        WHERE a.status IN ('Belum dibayar', 'Ditolak') 
-          AND a.id_anggota = ?
-          AND a.angsuran_ke = (
-              SELECT MIN(a2.angsuran_ke) 
-              FROM angsuran a2 
-              WHERE a2.id_pinjaman = a.id_pinjaman 
-                AND a2.status IN ('Belum dibayar', 'Ditolak')
-          )
-        ORDER BY da.tgl_jatuh_tempo ASC
-    ");
-    $stmt->execute([$user['id']]);
-    $angsuranList = $stmt->fetchAll();
+$dendaPerHari = (float)get_setting('denda_per_hari', 5000);
+
+foreach ($pinjamanList as $p) {
+    // Ambil semua angsuran yang sudah tercatat di database untuk pinjaman ini
+    $stAng = $pdo->prepare("SELECT id_angsuran AS id, angsuran_ke, besar_angsuran AS nominal, status FROM angsuran WHERE id_pinjaman = ?");
+    $stAng->execute([$p['id']]);
+    $dbAngsurans = [];
+    foreach ($stAng->fetchAll() as $a) {
+        $dbAngsurans[(int)$a['angsuran_ke']] = $a;
+    }
+
+    $next_ke = 1;
+    $repay_id = null;
+    $status = 'Belum dibayar';
+    $can_pay = true;
+
+    for ($i = 1; $i <= (int)$p['tenor']; $i++) {
+        if (isset($dbAngsurans[$i])) {
+            $item = $dbAngsurans[$i];
+            if ($item['status'] === 'Diterima') {
+                continue;
+            } else {
+                $next_ke = $i;
+                $repay_id = (int)$item['id'];
+                $status = $item['status'];
+                if ($item['status'] === 'Menunggu konfirmasi') {
+                    $can_pay = false;
+                }
+                break;
+            }
+        } else {
+            $next_ke = $i;
+            $repay_id = null;
+            $status = 'Belum dibayar';
+            break;
+        }
+    }
+
+    if ($can_pay) {
+        $tenor = (int)$p['tenor'];
+        $tglPinjam = $p['tgl_pinjaman'];
+        $angsuranPerBulan = (float)$p['angsuran_per_bulan'];
+        $totalBayar = (float)$p['total_bayar'];
+        $angsuranTerakhir = round($totalBayar - ($angsuranPerBulan * ($tenor - 1)), 2);
+
+        $nominal = ($next_ke === $tenor) ? $angsuranTerakhir : $angsuranPerBulan;
+        $jatuhTempo = date('Y-m-d', strtotime("+{$next_ke} month", strtotime($tglPinjam)));
+
+        // Hitung denda dinamis jika sudah lewat jatuh tempo
+        $denda = 0.0;
+        $today = date('Y-m-d');
+        if ($today > $jatuhTempo) {
+            $diff = (strtotime($today) - strtotime($jatuhTempo)) / 86400;
+            $days = max(0, (int)floor($diff));
+            $denda = $days * $dendaPerHari;
+        }
+
+        // Cari tahu apakah ada denda yang tercatat di detail_angsuran
+        // (Misalnya jika angsuran ditolak, tapi denda sudah terlanjur terhitung di DB)
+        if ($repay_id) {
+            $stDenda = $pdo->prepare("SELECT denda_total FROM detail_angsuran WHERE id_angsuran = ?");
+            $stDenda->execute([$repay_id]);
+            $dbDenda = $stDenda->fetch();
+            if ($dbDenda) {
+                $denda = (float)$dbDenda['denda_total'];
+            }
+        }
+
+        // Format value option: jika baru = "new_{id_pinjaman}_{next_ke}", jika exist (ditolak) = "existing_{repay_id}"
+        $optValue = $repay_id ? "existing_{$repay_id}" : "new_{$p['id']}_{$next_ke}";
+
+        $angsuranList[] = [
+            'id' => $optValue, // di-mapping ke value dropdown
+            'angsuran_ke' => $next_ke,
+            'nominal' => $nominal,
+            'jatuh_tempo' => $jatuhTempo,
+            'nomor_pinjaman' => $p['nomor_pinjaman'],
+            'total_denda' => $denda,
+            'status_denda' => 'Belum Dibayar',
+            'status' => $status
+        ];
+    }
 }
 
+// Cari denda belum dibayar dari detail_angsuran
 $dendaStmt = $pdo->prepare("
     SELECT 
         da.id_angsuran AS id,
@@ -51,7 +109,7 @@ $dendaStmt = $pdo->prepare("
         a.angsuran_ke,
         p.nama_pinjaman AS nomor_pinjaman
     FROM detail_angsuran da
-    JOIN angsuran a ON da.id_angsuran = a.id_angsuran
+    JOIN angsuran a ON da.id_angsuran = da.id_angsuran
     JOIN pinjaman p ON p.id_pinjaman = a.id_pinjaman
     WHERE a.id_anggota = ? AND da.status_denda = 'Belum Dibayar' AND da.jumlah_hari_terlambat > 0
     ORDER BY da.created_at DESC
@@ -60,12 +118,12 @@ $dendaStmt->execute([$user['id']]);
 $dendaList = $dendaStmt->fetchAll();
 
 if (is_post()) {
-    $angsuranId = (int)($_POST['angsuran_id'] ?? 0);
+    $angsuranTarget = $_POST['angsuran_id'] ?? '';
     $nominal = parse_currency($_POST['nominal'] ?? 0);
     $tanggal = $_POST['tanggal_bayar'] ?? '';
     $catatan = trim($_POST['catatan'] ?? '');
 
-    if ($angsuranId <= 0 || $nominal <= 0 || $tanggal === '') {
+    if ($angsuranTarget === '' || $nominal <= 0 || $tanggal === '') {
         $errors[] = 'Lengkapi data pembayaran.';
     }
 
@@ -82,28 +140,116 @@ if (is_post()) {
     }
 
     if (empty($errors)) {
-        $stmt = $pdo->prepare("
-            SELECT a.id_angsuran AS id, a.besar_angsuran AS nominal, da.denda_total AS total_denda
-            FROM angsuran a
-            JOIN detail_angsuran da ON a.id_angsuran = da.id_angsuran
-            WHERE a.id_angsuran = ? AND a.id_anggota = ?
-        ");
-        $stmt->execute([$angsuranId, $user['id']]);
-        $row = $stmt->fetch();
-        if (!$row) {
-            $errors[] = 'Angsuran tidak valid.';
-        } else {
-            $minRequired = (float)$row['nominal'] + (float)$row['total_denda'];
-            if ($nominal < $minRequired) {
-                $errors[] = 'Nominal pembayaran Anda (' . format_rupiah($nominal) . ') kurang dari jumlah minimal yang harus dibayar yaitu ' . format_rupiah($minRequired) . '.';
+        if (strpos($angsuranTarget, 'new_') === 0) {
+            // Installment baru
+            $parts = explode('_', $angsuranTarget);
+            $pinjamanId = (int)$parts[1];
+            $angsuranKe = (int)$parts[2];
+
+            // Ambil data pinjaman untuk validasi
+            $stPinj = $pdo->prepare("SELECT * FROM pinjaman WHERE id_pinjaman = ? AND id_anggota = ? AND status = 'Dicairkan'");
+            $stPinj->execute([$pinjamanId, $user['id']]);
+            $pinj = $stPinj->fetch();
+
+            if (!$pinj) {
+                $errors[] = 'Pinjaman tidak valid.';
             } else {
-                $stmt = $pdo->prepare("UPDATE angsuran SET tgl_pembayaran = ?, bukti_transfer = ?, besar_angsuran = ?, status = 'Menunggu konfirmasi', ket = ? WHERE id_angsuran = ?");
-                $stmt->execute([$tanggal, $bukti, $nominal, $catatan, $angsuranId]);
-                log_activity((int)$user['id'], 'Membayar angsuran sebesar ' . format_rupiah($nominal));
-                notify_admins('Angsuran baru', $user['nama'] . ' mengunggah pembayaran angsuran sebesar ' . format_rupiah($nominal) . '.');
-                set_flash('success', 'Pembayaran berhasil diupload. Menunggu konfirmasi admin.');
-                redirect('/user/bayar-angsuran.php');
+                $tenor = (int)$pinj['tenor'];
+                $angsuranPerBulan = (float)$pinj['angsuran_per_bulan'];
+                $totalBayar = (float)$pinj['total_bayar'];
+                $angsuranTerakhir = round($totalBayar - ($angsuranPerBulan * ($tenor - 1)), 2);
+                $expectedNominal = ($angsuranKe === $tenor) ? $angsuranTerakhir : $angsuranPerBulan;
+
+                // Hitung denda dinamis
+                $jatuhTempo = date('Y-m-d', strtotime("+{$angsuranKe} month", strtotime($pinj['tgl_pinjaman'])));
+                $denda = 0.0;
+                if ($tanggal > $jatuhTempo) {
+                    $diff = (strtotime($tanggal) - strtotime($jatuhTempo)) / 86400;
+                    $days = max(0, (int)floor($diff));
+                    $denda = $days * $dendaPerHari;
+                }
+
+                $minRequired = $expectedNominal + $denda;
+                if ($nominal < $minRequired) {
+                    $errors[] = 'Nominal pembayaran Anda (' . format_rupiah($nominal) . ') kurang dari jumlah minimal yang harus dibayar yaitu ' . format_rupiah($minRequired) . '.';
+                } else {
+                    // Simpan ke angsuran dengan status Menunggu konfirmasi
+                    $stmt = $pdo->prepare("INSERT INTO angsuran (id_katagori, id_anggota, id_pinjaman, tgl_pembayaran, angsuran_ke, besar_angsuran, ket, bukti_transfer, status, created_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?, 'Menunggu konfirmasi', NOW())");
+                    $stmt->execute([$user['id'], $pinjamanId, $tanggal, $angsuranKe, $nominal, $catatan, $bukti]);
+                    $angId = (int)$pdo->lastInsertId();
+
+                    // Simpan detail_angsuran dengan status_denda 'Belum Dibayar'
+                    $stmt = $pdo->prepare("INSERT INTO detail_angsuran (id_angsuran, tgl_jatuh_tempo, besar_angsuran, ket, jumlah_hari_terlambat, denda_tarif_per_hari, denda_total, status_denda, tanggal_denda, tanggal_bayar_denda, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, ?, 'Belum Dibayar', NULL, NULL, NOW(), NOW())");
+                    $daysLate = 0;
+                    if ($tanggal > $jatuhTempo) {
+                        $diff = (strtotime($tanggal) - strtotime($jatuhTempo)) / 86400;
+                        $daysLate = max(0, (int)floor($diff));
+                    }
+                    $stmt->execute([$angId, $jatuhTempo, $expectedNominal, $daysLate, $dendaPerHari, $denda]);
+
+                    log_activity((int)$user['id'], 'Membayar angsuran ke-' . $angsuranKe . ' sebesar ' . format_rupiah($nominal));
+                    notify_admins('Angsuran baru', $user['nama'] . ' mengunggah pembayaran angsuran sebesar ' . format_rupiah($nominal) . '.');
+                    set_flash('success', 'Pembayaran berhasil diupload. Menunggu konfirmasi admin.');
+                    redirect('/user/bayar-angsuran.php');
+                }
             }
+        } elseif (strpos($angsuranTarget, 'existing_') === 0) {
+            // Update angsuran ditolak sebelumnya
+            $parts = explode('_', $angsuranTarget);
+            $angsuranId = (int)$parts[1];
+
+            $stmt = $pdo->prepare("
+                SELECT a.id_angsuran AS id, a.angsuran_ke, a.besar_angsuran AS nominal, p.id_pinjaman, p.tgl_pinjaman, p.tenor, p.angsuran_per_bulan, p.total_bayar
+                FROM angsuran a
+                JOIN pinjaman p ON p.id_pinjaman = a.id_pinjaman
+                WHERE a.id_angsuran = ? AND a.id_anggota = ? AND a.status = 'Ditolak'
+            ");
+            $stmt->execute([$angsuranId, $user['id']]);
+            $row = $stmt->fetch();
+
+            if (!$row) {
+                $errors[] = 'Angsuran tidak valid.';
+            } else {
+                $tenor = (int)$row['tenor'];
+                $angsuranKe = (int)$row['angsuran_ke'];
+                $angsuranPerBulan = (float)$row['angsuran_per_bulan'];
+                $totalBayar = (float)$row['total_bayar'];
+                $angsuranTerakhir = round($totalBayar - ($angsuranPerBulan * ($tenor - 1)), 2);
+                $expectedNominal = ($angsuranKe === $tenor) ? $angsuranTerakhir : $angsuranPerBulan;
+
+                // Hitung denda dinamis
+                $jatuhTempo = date('Y-m-d', strtotime("+{$angsuranKe} month", strtotime($row['tgl_pinjaman'])));
+                $denda = 0.0;
+                if ($tanggal > $jatuhTempo) {
+                    $diff = (strtotime($tanggal) - strtotime($jatuhTempo)) / 86400;
+                    $days = max(0, (int)floor($diff));
+                    $denda = $days * $dendaPerHari;
+                }
+
+                $minRequired = $expectedNominal + $denda;
+                if ($nominal < $minRequired) {
+                    $errors[] = 'Nominal pembayaran Anda (' . format_rupiah($nominal) . ') kurang dari jumlah minimal yang harus dibayar yaitu ' . format_rupiah($minRequired) . '.';
+                } else {
+                    $stmt = $pdo->prepare("UPDATE angsuran SET tgl_pembayaran = ?, bukti_transfer = ?, besar_angsuran = ?, status = 'Menunggu konfirmasi', ket = ? WHERE id_angsuran = ?");
+                    $stmt->execute([$tanggal, $bukti, $nominal, $catatan, $angsuranId]);
+
+                    // Update detail_angsuran
+                    $stmt = $pdo->prepare("UPDATE detail_angsuran SET tgl_jatuh_tempo = ?, besar_angsuran = ?, jumlah_hari_terlambat = ?, denda_tarif_per_hari = ?, denda_total = ?, updated_at = NOW() WHERE id_angsuran = ?");
+                    $daysLate = 0;
+                    if ($tanggal > $jatuhTempo) {
+                        $diff = (strtotime($tanggal) - strtotime($jatuhTempo)) / 86400;
+                        $daysLate = max(0, (int)floor($diff));
+                    }
+                    $stmt->execute([$jatuhTempo, $expectedNominal, $daysLate, $dendaPerHari, $denda, $angsuranId]);
+
+                    log_activity((int)$user['id'], 'Membayar angsuran ke-' . $angsuranKe . ' sebesar ' . format_rupiah($nominal));
+                    notify_admins('Angsuran baru', $user['nama'] . ' mengunggah pembayaran angsuran sebesar ' . format_rupiah($nominal) . '.');
+                    set_flash('success', 'Pembayaran berhasil diupload. Menunggu konfirmasi admin.');
+                    redirect('/user/bayar-angsuran.php');
+                }
+            }
+        } else {
+            $errors[] = 'Pilihan angsuran tidak valid.';
         }
     }
 }

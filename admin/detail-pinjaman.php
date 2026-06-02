@@ -45,25 +45,6 @@ if (is_post()) {
         $stmt = $pdo->prepare("UPDATE pinjaman SET bunga_persen = ?, tenor = ?, total_bayar = ?, angsuran_per_bulan = ?, status = 'Dicairkan', tgl_acc_peminjam = CURDATE(), tgl_pinjaman = CURDATE() WHERE id_pinjaman = ?");
         $stmt->execute([$bunga, $tenor, $totalBayar, $angsuranBulat, $id]);
 
-        // 2. Generate jadwal angsuran (hanya jika belum ada)
-        $exists = $pdo->prepare("SELECT COUNT(*) AS total FROM angsuran WHERE id_pinjaman = ?");
-        $exists->execute([$id]);
-        if ((int)$exists->fetch()['total'] === 0) {
-            for ($i = 1; $i <= $tenor; $i++) {
-                $jatuhTempo = date('Y-m-d', strtotime("+{$i} month"));
-
-                // Angsuran ke-tenor (terakhir) menyerap sisa pembulatan
-                $nominalAngsuran = ($i === $tenor) ? $angsuranTerakhir : $angsuranBulat;
-
-                $stmt = $pdo->prepare("INSERT INTO angsuran (id_katagori, id_anggota, id_pinjaman, tgl_pembayaran, angsuran_ke, besar_angsuran, ket, status, created_at) VALUES (1, ?, ?, NULL, ?, ?, '', 'Belum dibayar', NOW())");
-                $stmt->execute([$pinjaman['anggota_id'], $id, $i, $nominalAngsuran]);
-                $angsuranId = (int)$pdo->lastInsertId();
-
-                $stmt = $pdo->prepare("INSERT INTO detail_angsuran (id_angsuran, tgl_jatuh_tempo, besar_angsuran, ket, jumlah_hari_terlambat, denda_tarif_per_hari, denda_total, status_denda, tanggal_denda, tanggal_bayar_denda, created_at, updated_at) VALUES (?, ?, ?, '', 0, 0, 0, 'Belum Dibayar', NULL, NULL, NOW(), NOW())");
-                $stmt->execute([$angsuranId, $jatuhTempo, $nominalAngsuran]);
-            }
-        }
-
         create_notification((int)$pinjaman['anggota_id'], 'Pinjaman disetujui & dicairkan', 'Pinjaman ' . $pinjaman['nomor_pinjaman'] . ' telah disetujui dan dicairkan. Angsuran per bulan: ' . format_rupiah($angsuranBulat) . '. Total yang harus dibayar: ' . format_rupiah($totalBayar) . '.');
         log_activity((int)$authUser['id'], 'Menyetujui & mencairkan pinjaman ' . $pinjaman['nomor_pinjaman']);
         
@@ -87,24 +68,66 @@ if (is_post()) {
     redirect('/admin/detail-pinjaman.php?id=' . $id);
 }
 
-$scheduleStmt = $pdo->prepare("
+$stmtPaid = $pdo->prepare("
     SELECT 
         a.id_angsuran AS id,
         a.angsuran_ke,
-        da.tgl_jatuh_tempo AS jatuh_tempo,
         a.besar_angsuran AS nominal,
         a.tgl_pembayaran AS tanggal_bayar,
         a.status,
+        da.tgl_jatuh_tempo AS jatuh_tempo,
         da.jumlah_hari_terlambat AS jumlah_hari,
         da.denda_total,
         da.status_denda AS status_denda
     FROM angsuran a
-    JOIN detail_angsuran da ON da.id_angsuran = a.id_angsuran
+    LEFT JOIN detail_angsuran da ON da.id_angsuran = a.id_angsuran
     WHERE a.id_pinjaman = ?
-    ORDER BY a.angsuran_ke ASC
 ");
-$scheduleStmt->execute([$id]);
-$schedule = $scheduleStmt->fetchAll();
+$stmtPaid->execute([$id]);
+$paidMap = [];
+foreach ($stmtPaid->fetchAll() as $r) {
+    $paidMap[(int)$r['angsuran_ke']] = $r;
+}
+
+$schedule = [];
+if (in_array($pinjaman['status'], ['Dicairkan', 'Lunas'], true) && !empty($pinjaman['tgl_pinjaman'])) {
+    $tenor = (int)$pinjaman['tenor'];
+    $tglPinjam = $pinjaman['tgl_pinjaman'];
+    $angsuranPerBulan = (float)$pinjaman['angsuran_per_bulan'];
+    $totalBayar = (float)$pinjaman['total_bayar'];
+    $angsuranTerakhir = round($totalBayar - ($angsuranPerBulan * ($tenor - 1)), 2);
+
+    for ($i = 1; $i <= $tenor; $i++) {
+        $jatuhTempo = date('Y-m-d', strtotime("+{$i} month", strtotime($tglPinjam)));
+        $expectedNominal = ($i === $tenor) ? $angsuranTerakhir : $angsuranPerBulan;
+
+        if (isset($paidMap[$i])) {
+            $schedule[] = [
+                'id' => $paidMap[$i]['id'],
+                'angsuran_ke' => $i,
+                'jatuh_tempo' => $paidMap[$i]['jatuh_tempo'] ?: $jatuhTempo,
+                'nominal' => $paidMap[$i]['nominal'],
+                'tanggal_bayar' => $paidMap[$i]['tanggal_bayar'],
+                'status' => $paidMap[$i]['status'],
+                'jumlah_hari' => $paidMap[$i]['jumlah_hari'],
+                'total_denda' => $paidMap[$i]['denda_total'],
+                'status_denda' => $paidMap[$i]['status_denda'],
+            ];
+        } else {
+            $schedule[] = [
+                'id' => null,
+                'angsuran_ke' => $i,
+                'jatuh_tempo' => $jatuhTempo,
+                'nominal' => $expectedNominal,
+                'tanggal_bayar' => null,
+                'status' => 'Belum dibayar',
+                'jumlah_hari' => 0,
+                'total_denda' => 0.0,
+                'status_denda' => 'Belum Dibayar',
+            ];
+        }
+    }
+}
 
 $page_title = 'Detail Pinjaman';
 $role = 'admin';

@@ -46,3 +46,29 @@
 [2026-05-29 21:45:13] [User ID: 1] Mengonfirmasi angsuran PJ-202605-0004 ke-1
 [2026-05-29 21:56:36] [User ID: 1] Input pembayaran manual angsuran ke-3 pinjaman ID 2 sebesar Rp 2.458.333
 [2026-05-29 22:09:28] [User ID: 1] Bayar manual angsuran ke-4 pinjaman PJ-202605-0002 sebesar Rp 2.458.333
+[2026-06-01 23:02:22] [User ID: 4] Login ke sistem (Anggota)
+[2026-06-01 23:15:47] [User ID: 4] Mengajukan simpanan Pokok sebesar Rp 10.000.000
+[2026-06-01 23:16:08] [User ID: 1] Login ke sistem (Admin)
+[2026-06-01 23:16:15] [User ID: 1] Menyetujui simpanan user1
+[2026-06-01 23:23:30] [User ID: 4] Mengajukan pinjaman PJ-202606-0001 sebesar Rp 2.000.000
+[2026-06-01 23:24:37] [User ID: 1] Menyetujui & mencairkan pinjaman PJ-202606-0001
+[2026-06-01 23:25:12] [User ID: 4] Membayar angsuran sebesar Rp 4.277.778
+[2026-06-01 23:25:45] [User ID: 4] Membayar angsuran sebesar Rp 4.277.778
+[2026-06-01 23:26:01] [User ID: 4] Membayar angsuran sebesar Rp 36.333.333
+[2026-06-01 23:26:23] [User ID: 1] Mengonfirmasi angsuran PJ-202606-0001 ke-1
+[2026-06-01 23:26:26] [User ID: 1] Mengonfirmasi angsuran PJ-202605-0004 ke-4
+[2026-06-01 23:26:28] [User ID: 1] Mengonfirmasi angsuran PJ-202605-0004 ke-5
+[2026-06-01 23:34:13] [User ID: 4] Membayar angsuran ke-1 sebesar Rp 36.333.333
+[2026-06-01 23:37:01] [User ID: 1] Mengonfirmasi angsuran PJ-202606-0001 ke-1
+[2026-06-01 23:46:34] [User ID: 1] Bayar manual angsuran ke-1 pinjaman PJ-202605-0002 sebesar Rp 1
+[2026-06-01 23:46:49] [User ID: 1] Bayar manual angsuran ke-5 pinjaman PJ-202605-0002 sebesar Rp 2.458.333
+[2026-06-01 23:46:55] [User ID: 1] Bayar manual angsuran ke-6 pinjaman PJ-202605-0002 sebesar Rp 2.458.333
+[2026-06-01 23:50:15] [User ID: 4] Login ke sistem (Anggota)
+[2026-06-01 23:50:32] [User ID: 1] Bayar manual angsuran ke-2 pinjaman PJ-202606-0001 sebesar Rp 363.333
+[2026-06-01 23:50:36] [User ID: 1] Bayar manual angsuran ke-3 pinjaman PJ-202606-0001 sebesar Rp 363.333
+[2026-06-01 23:50:41] [User ID: 1] Bayar manual angsuran ke-4 pinjaman PJ-202606-0001 sebesar Rp 363.333
+[2026-06-01 23:50:52] [User ID: 1] Bayar manual angsuran ke-5 pinjaman PJ-202606-0001 sebesar Rp 363.333
+[2026-06-01 23:51:02] [User ID: 1] Bayar manual angsuran ke-6 pinjaman PJ-202605-0004 sebesar Rp 42.778
+[2026-06-01 23:51:08] [User ID: 1] Bayar manual angsuran ke-7 pinjaman PJ-202605-0004 sebesar Rp 42.778
+[2026-06-01 23:51:13] [User ID: 1] Bayar manual angsuran ke-8 pinjaman PJ-202605-0004 sebesar Rp 42.778
+[2026-06-02 10:50:08] [User ID: 4] Login ke sistem (Anggota)

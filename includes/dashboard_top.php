@@ -24,8 +24,7 @@ ensure_feature_tables();
 sync_late_fines($role === 'user' ? (int)$authUser['id'] : null);
 sync_due_reminders($role === 'user' ? (int)$authUser['id'] : null);
 
-$unreadNotifications = unread_notification_count((int)$authUser['id']);
-$notificationUrl     = $role === 'admin' ? base_url('/admin/notifikasi.php') : base_url('/user/notifikasi.php');
+
 ?>
 <?php require __DIR__ . '/header.php'; ?>
 
@@ -73,12 +72,7 @@ $notificationUrl     = $role === 'admin' ? base_url('/admin/notifikasi.php') : b
         <a href="<?= base_url('/admin/laporan.php') ?>" class="sidebar-link" id="sl-laporan">
             <i class="bi bi-file-earmark-bar-graph"></i>Laporan
         </a>
-        <a href="<?= base_url('/admin/notifikasi.php') ?>" class="sidebar-link" id="sl-notifikasi">
-            <i class="bi bi-bell"></i>Notifikasi
-            <?php if ($unreadNotifications > 0): ?>
-                <span class="sidebar-link-badge"><?= $unreadNotifications; ?></span>
-            <?php endif; ?>
-        </a>
+
         <a href="<?= base_url('/admin/audit-log.php') ?>" class="sidebar-link" id="sl-audit-log">
             <i class="bi bi-shield-check"></i>Audit Log
         </a>
@@ -104,12 +98,7 @@ $notificationUrl     = $role === 'admin' ? base_url('/admin/notifikasi.php') : b
         <a href="<?= base_url('/user/bayar-angsuran.php') ?>" class="sidebar-link" id="sl-angsuran">
             <i class="bi bi-calendar-check"></i>Angsuran
         </a>
-        <a href="<?= base_url('/user/notifikasi.php') ?>" class="sidebar-link" id="sl-notifikasi">
-            <i class="bi bi-bell"></i>Notifikasi
-            <?php if ($unreadNotifications > 0): ?>
-                <span class="sidebar-link-badge"><?= $unreadNotifications; ?></span>
-            <?php endif; ?>
-        </a>
+
         <a href="<?= base_url('/user/riwayat-aktivitas.php') ?>" class="sidebar-link" id="sl-riwayat-aktivitas">
             <i class="bi bi-clock-history"></i>Riwayat Aktivitas
         </a>
@@ -140,12 +129,7 @@ $notificationUrl     = $role === 'admin' ? base_url('/admin/notifikasi.php') : b
         <span class="topbar-page-title"><?= e($page_title ?? 'Dashboard'); ?></span>
       </div>
       <div class="topbar-right">
-        <a href="<?= e($notificationUrl); ?>" class="topbar-notification" title="Notifikasi">
-          <i class="bi bi-bell"></i>
-          <?php if ($unreadNotifications > 0): ?>
-            <span><?= $unreadNotifications; ?></span>
-          <?php endif; ?>
-        </a>
+
         <span class="status-pill <?= $statusInfo['class']; ?>"><?= $statusInfo['label']; ?></span>
         <div class="topbar-user">
           <div class="topbar-avatar"><?= $initials; ?></div>

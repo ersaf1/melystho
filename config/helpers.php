@@ -62,33 +62,29 @@ function format_rupiah(mixed $angka): string
 
 function parse_currency(mixed $val): float
 {
-    if (empty($val)) {
+    if (empty($val) && $val !== '0') {
         return 0.0;
     }
-    $val = (string)$val;
-    
-    // Jika ada koma, diasumsikan sebagai pecahan desimal gaya Indonesia (contoh: 42.777,78 atau 42777,78)
+    $val = trim((string)$val);
+
+    // Hapus semua karakter selain digit, titik, dan koma
+    $val = preg_replace('/[^\d.,]/', '', $val);
+
+    if ($val === '' || $val === '0') {
+        return 0.0;
+    }
+
+    // Format Indonesia: titik = pemisah ribuan, koma = desimal (contoh: 1.000.000 atau 42.777,50)
+    // Format plain: hanya digit (contoh: 3000000)
     if (strpos($val, ',') !== false) {
+        // Ada koma → koma adalah desimal, titik adalah ribuan
+        $val = str_replace('.', '', $val);   // hapus pemisah ribuan
+        $val = str_replace(',', '.', $val);  // ubah koma desimal ke titik
+    } else {
+        // Tidak ada koma → semua titik adalah pemisah ribuan
         $val = str_replace('.', '', $val);
-        $val = str_replace(',', '.', $val);
-        return (float)$val;
     }
-    
-    // Jika ada lebih dari satu titik, itu adalah pemisah ribuan (contoh: 1.000.000)
-    if (substr_count($val, '.') > 1) {
-        $val = str_replace('.', '', $val);
-        return (float)$val;
-    }
-    
-    // Jika ada satu titik
-    if (substr_count($val, '.') === 1) {
-        $parts = explode('.', $val);
-        // Jika setelah titik ada tepat 3 digit, kemungkinan besar itu ribuan (contoh: 1.000)
-        if (strlen($parts[1]) === 3) {
-            $val = str_replace('.', '', $val);
-        }
-    }
-    
+
     return (float)$val;
 }
 

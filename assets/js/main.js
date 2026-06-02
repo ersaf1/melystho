@@ -276,68 +276,76 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ─── DYNAMIC CURRENCY FORMATTING (RUPIAH THOUSANDS SEPARATOR) ───
-  const formatCurrency = (val) => {
-    let str = val.toString();
-    
-    // Jika input berupa float standard dari backend (misal "42777.78"), ubah titik desimal ke koma terlebih dahulu
-    if (str.includes('.') && !str.includes(',')) {
-      str = str.replace('.', ',');
-    }
-    
-    const parts = str.split(',');
-    
-    // Bersihkan bagian integer (hanya angka)
-    const integerPart = parts[0].replace(/\D/g, '');
-    if (integerPart === '') return '';
-    
-    let formatted = new Intl.NumberFormat('id-ID').format(parseInt(integerPart, 10));
-    
-    // Jika ada bagian desimal/pecahan, bersihkan dan gabungkan (maksimal 2 digit pecahan)
-    if (parts.length > 1) {
-      const decimalPart = parts[1].replace(/\D/g, '').substring(0, 2);
-      formatted += ',' + decimalPart;
-    }
-    
-    return formatted;
-  };
+  const digitsOnly = (str) => (str || '').replace(/\D/g, '');
 
-  const unformatCurrency = (str) => {
-    // Hapus semua titik (pemisah ribuan)
-    let clean = str.replace(/\./g, '');
-    // Ubah koma menjadi titik (penanda desimal standar database/PHP)
-    clean = clean.replace(/,/g, '.');
-    return clean;
+  const formatThousands = (digits) => {
+    if (!digits) return '';
+    return parseInt(digits, 10).toLocaleString('id-ID');
   };
 
   // Find and format all currency inputs
   document.querySelectorAll('input[data-type="currency"]').forEach(input => {
     // Format initial value if present
     if (input.value) {
-      input.value = formatCurrency(input.value);
+      const raw = digitsOnly(input.value);
+      input.value = raw ? formatThousands(raw) : '';
     }
 
+    // Block non-numeric key presses
+    input.addEventListener('keydown', function (e) {
+      const allowed = ['Backspace','Delete','ArrowLeft','ArrowRight','ArrowUp',
+                       'ArrowDown','Home','End','Tab','Enter'];
+      if (allowed.includes(e.key) || e.ctrlKey || e.metaKey) return;
+      if (!/^\d$/.test(e.key)) e.preventDefault();
+    });
+
     // Live formatting on input
-    input.addEventListener('input', (e) => {
-      const cursor = e.target.selectionStart;
-      const oldLen = e.target.value.length;
-      
-      const formatted = formatCurrency(e.target.value);
-      e.target.value = formatted;
-      
-      const newLen = formatted.length;
-      e.target.setSelectionRange(cursor + (newLen - oldLen), cursor + (newLen - oldLen));
-      
-      // Manually trigger change or input event on dependent fields if they have custom formulas
-      const event = new Event('input', { bubbles: true });
-      e.target.dispatchEvent(event);
+    input.addEventListener('input', function (e) {
+      // Guard: skip if this event was dispatched by us to avoid infinite loop
+      if (e._fromCurrencyFormatter) return;
+
+      const raw    = digitsOnly(this.value);
+      const selEnd = this.selectionEnd;
+
+      // Count digits before cursor in the current (pre-format) value
+      const digitsBeforeCursor = digitsOnly(this.value.slice(0, selEnd)).length;
+
+      // Format and update
+      const formatted = raw ? formatThousands(raw) : '';
+      this.value = formatted;
+
+      // Restore cursor position by counting digits
+      let digitCount = 0;
+      let newCursor  = formatted.length;
+      for (let i = 0; i < formatted.length; i++) {
+        if (/\d/.test(formatted[i])) digitCount++;
+        if (digitCount === digitsBeforeCursor) { newCursor = i + 1; break; }
+      }
+      this.setSelectionRange(newCursor, newCursor);
+    });
+
+    // Handle paste: strip non-digits then format
+    input.addEventListener('paste', function (e) {
+      e.preventDefault();
+      const text   = (e.clipboardData || window.clipboardData).getData('text');
+      const start  = this.selectionStart;
+      const end    = this.selectionEnd;
+      const before = digitsOnly(this.value.slice(0, start));
+      const after  = digitsOnly(this.value.slice(end));
+      const pasted = digitsOnly(text);
+      const newDigits = before + pasted + after;
+      this.value = newDigits ? formatThousands(newDigits) : '';
+      const ev = new Event('input', { bubbles: true });
+      ev._fromCurrencyFormatter = true;
+      this.dispatchEvent(ev);
     });
   });
 
-  // Intercept all form submits to strip out dots so PHP gets raw numbers (with standard decimal dots)
+  // Intercept all form submits to strip out dots so PHP gets raw numbers
   document.querySelectorAll('form').forEach(form => {
     form.addEventListener('submit', () => {
       form.querySelectorAll('input[data-type="currency"]').forEach(input => {
-        input.value = unformatCurrency(input.value);
+        input.value = digitsOnly(input.value);
       });
     });
   });

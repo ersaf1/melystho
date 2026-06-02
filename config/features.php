@@ -211,32 +211,62 @@ function sync_late_fines(?int $userId = null): void
 function sync_due_reminders(?int $userId = null): void
 {
     $days = max(0, (int)get_setting('reminder_days_before_due', 3));
-    $params = [$days];
-    $userFilter = '';
+    $pdo = db();
+
+    $sql = "SELECT id_pinjaman, nama_pinjaman, id_anggota, tgl_pinjaman, tenor, angsuran_per_bulan, total_bayar FROM pinjaman WHERE status = 'Dicairkan'";
+    $params = [];
     if ($userId) {
-        $userFilter = ' AND a.id_anggota = ?';
+        $sql .= " AND id_anggota = ?";
         $params[] = $userId;
     }
 
-    $sql = "
-        SELECT a.id_angsuran, a.angsuran_ke, da.tgl_jatuh_tempo, da.besar_angsuran, p.nama_pinjaman, a.id_anggota
-        FROM angsuran a
-        JOIN detail_angsuran da ON da.id_angsuran = a.id_angsuran
-        JOIN pinjaman p ON p.id_pinjaman = a.id_pinjaman
-        WHERE a.status IN ('Belum dibayar', 'Ditolak')
-          AND da.tgl_jatuh_tempo BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)
-          $userFilter
-        ORDER BY da.tgl_jatuh_tempo ASC
-    ";
-
-    $stmt = db()->prepare($sql);
+    $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
-    foreach ($stmt->fetchAll() as $row) {
-        create_unique_notification(
-            (int)$row['id_anggota'],
-            'Jatuh tempo angsuran',
-            'Angsuran ' . $row['nama_pinjaman'] . ' ke-' . $row['angsuran_ke'] . ' jatuh tempo pada ' . date('d/m/Y', strtotime($row['tgl_jatuh_tempo'])) . ' sebesar ' . format_rupiah($row['besar_angsuran']) . '.'
-        );
+    $activeLoans = $stmt->fetchAll();
+
+    foreach ($activeLoans as $p) {
+        $stLatest = $pdo->prepare("SELECT angsuran_ke, status FROM angsuran WHERE id_pinjaman = ? ORDER BY angsuran_ke DESC LIMIT 1");
+        $stLatest->execute([$p['id_pinjaman']]);
+        $latest = $stLatest->fetch();
+
+        $next_ke = 1;
+        $can_remind = true;
+
+        if ($latest) {
+            if ($latest['status'] === 'Menunggu konfirmasi') {
+                $can_remind = false;
+            } elseif ($latest['status'] === 'Ditolak') {
+                $next_ke = (int)$latest['angsuran_ke'];
+            } elseif ($latest['status'] === 'Diterima') {
+                if ((int)$latest['angsuran_ke'] < (int)$p['tenor']) {
+                    $next_ke = (int)$latest['angsuran_ke'] + 1;
+                } else {
+                    $can_remind = false;
+                }
+            }
+        }
+
+        if ($can_remind) {
+            $tenor = (int)$p['tenor'];
+            $tglPinjam = $p['tgl_pinjaman'];
+            $angsuranPerBulan = (float)$p['angsuran_per_bulan'];
+            $totalBayar = (float)$p['total_bayar'];
+            $angsuranTerakhir = round($totalBayar - ($angsuranPerBulan * ($tenor - 1)), 2);
+
+            $nominal = ($next_ke === $tenor) ? $angsuranTerakhir : $angsuranPerBulan;
+            $jatuhTempo = date('Y-m-d', strtotime("+{$next_ke} month", strtotime($tglPinjam)));
+
+            $today = date('Y-m-d');
+            $maxDate = date('Y-m-d', strtotime("+{$days} days"));
+
+            if ($jatuhTempo >= $today && $jatuhTempo <= $maxDate) {
+                create_unique_notification(
+                    (int)$p['id_anggota'],
+                    'Jatuh tempo angsuran',
+                    'Angsuran ' . $p['nama_pinjaman'] . ' ke-' . $next_ke . ' jatuh tempo pada ' . date('d/m/Y', strtotime($jatuhTempo)) . ' sebesar ' . format_rupiah($nominal) . '.'
+                );
+            }
+        }
     }
 }
 

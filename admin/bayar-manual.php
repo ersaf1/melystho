@@ -23,27 +23,68 @@ if (isset($_GET['ajax_pinjaman'])) {
     if (!$aid) { echo json_encode([]); exit; }
     $st = $pdo->prepare("
         SELECT p.id_pinjaman AS id, p.nama_pinjaman AS nomor,
-               p.besar_pinjaman, p.tenor, p.bunga_persen, p.angsuran_per_bulan, p.status, p.tgl_pinjaman,
-               (SELECT COUNT(*) FROM angsuran WHERE id_pinjaman=p.id_pinjaman AND status='Diterima') AS sudah_bayar,
-               (SELECT COUNT(*) FROM angsuran WHERE id_pinjaman=p.id_pinjaman) AS total_angsuran,
-               (SELECT COUNT(*) FROM angsuran WHERE id_pinjaman=p.id_pinjaman AND status!='Diterima') AS sisa_belum
+               p.besar_pinjaman, p.tenor, p.bunga_persen, p.angsuran_per_bulan, p.status, p.tgl_pinjaman, p.total_bayar,
+               (SELECT COUNT(*) FROM angsuran WHERE id_pinjaman=p.id_pinjaman AND status='Diterima') AS sudah_bayar
         FROM pinjaman p
-        WHERE p.id_anggota=? AND p.status IN ('Disetujui','Dicairkan')
+        WHERE p.id_anggota=? AND p.status = 'Dicairkan'
         ORDER BY p.created_at DESC
     ");
     $st->execute([$aid]);
     $rows = $st->fetchAll(PDO::FETCH_ASSOC);
     foreach ($rows as &$row) {
-        $as = $pdo->prepare("
-            SELECT a.id_angsuran AS id, a.angsuran_ke, a.besar_angsuran AS nominal, a.status,
-                   da.tgl_jatuh_tempo AS jatuh_tempo
-            FROM angsuran a
-            LEFT JOIN detail_angsuran da ON da.id_angsuran=a.id_angsuran
-            WHERE a.id_pinjaman=? AND a.status!='Diterima'
-            ORDER BY a.angsuran_ke ASC LIMIT 36
-        ");
-        $as->execute([$row['id']]);
-        $row['angsuran'] = $as->fetchAll(PDO::FETCH_ASSOC);
+        $row['total_angsuran'] = (int)$row['tenor'];
+        $row['sisa_belum'] = (int)$row['tenor'] - (int)$row['sudah_bayar'];
+        
+        $row['angsuran'] = [];
+        if ($row['sisa_belum'] > 0) {
+            // Ambil semua angsuran yang sudah tercatat di database untuk pinjaman ini
+            $stAng = $pdo->prepare("SELECT id_angsuran AS id, angsuran_ke, besar_angsuran AS nominal, status FROM angsuran WHERE id_pinjaman = ? ORDER BY angsuran_ke ASC");
+            $stAng->execute([$row['id']]);
+            $dbAngsurans = [];
+            foreach ($stAng->fetchAll() as $a) {
+                $dbAngsurans[(int)$a['angsuran_ke']] = $a;
+            }
+
+            // Tampilkan SEMUA angsuran yang belum lunas (bukan cuma berikutnya)
+            for ($i = 1; $i <= (int)$row['tenor']; $i++) {
+                if (isset($dbAngsurans[$i])) {
+                    $item = $dbAngsurans[$i];
+                    if ($item['status'] === 'Diterima') {
+                        continue; // sudah lunas, skip
+                    }
+                    // Belum lunas (Menunggu konfirmasi, Ditolak, dll)
+                    $nominal = (float)$item['nominal'];
+                    if ($nominal <= 0) {
+                        $nominal = ($i === (int)$row['tenor'])
+                            ? round((float)$row['total_bayar'] - ((float)$row['angsuran_per_bulan'] * ((int)$row['tenor'] - 1)), 2)
+                            : (float)$row['angsuran_per_bulan'];
+                    }
+                    $jatuhTempo = date('Y-m-d', strtotime("+{$i} month", strtotime($row['tgl_pinjaman'])));
+                    $row['angsuran'][] = [
+                        'id'          => (int)$item['id'],
+                        'angsuran_ke' => $i,
+                        'nominal'     => $nominal,
+                        'status'      => $item['status'],
+                        'jatuh_tempo' => $jatuhTempo,
+                        'can_pay'     => ($item['status'] !== 'Menunggu konfirmasi'),
+                    ];
+                } else {
+                    // Angsuran belum ada di DB sama sekali
+                    $nominal = ($i === (int)$row['tenor'])
+                        ? round((float)$row['total_bayar'] - ((float)$row['angsuran_per_bulan'] * ((int)$row['tenor'] - 1)), 2)
+                        : (float)$row['angsuran_per_bulan'];
+                    $jatuhTempo = date('Y-m-d', strtotime("+{$i} month", strtotime($row['tgl_pinjaman'])));
+                    $row['angsuran'][] = [
+                        'id'          => "new_{$row['id']}_{$i}",
+                        'angsuran_ke' => $i,
+                        'nominal'     => $nominal,
+                        'status'      => 'Belum dibayar',
+                        'jatuh_tempo' => $jatuhTempo,
+                        'can_pay'     => true,
+                    ];
+                }
+            }
+        }
     }
     echo json_encode($rows);
     exit;
@@ -52,32 +93,73 @@ if (isset($_GET['ajax_pinjaman'])) {
 /* ─── POST: simpan ─── */
 if (is_post() && ($_POST['action'] ?? '') === 'bayar') {
     $pid  = (int)($_POST['pinjaman_id'] ?? 0);
-    $aid  = (int)($_POST['angsuran_id'] ?? 0);
+    $aidTarget  = $_POST['angsuran_id'] ?? '';
     $nom  = parse_currency($_POST['nominal'] ?? 0);
     $tgl  = $_POST['tanggal_bayar'] ?? '';
     $mid  = (int)($_POST['anggota_id'] ?? 0);
 
-    if ($pid && $aid && $nom > 0 && $tgl) {
-        // Ambil info pinjaman & angsuran sebelum update untuk log & notifikasi
-        $st_info = $pdo->prepare("
-            SELECT p.nama_pinjaman, a.angsuran_ke 
-            FROM angsuran a 
-            JOIN pinjaman p ON a.id_pinjaman = p.id_pinjaman 
-            WHERE a.id_angsuran = ? AND a.id_pinjaman = ?
-        ");
-        $st_info->execute([$aid, $pid]);
-        $info = $st_info->fetch();
-        $nomor_pinjaman = $info['nama_pinjaman'] ?? '';
-        $ke = (int)($info['angsuran_ke'] ?? 0);
+    $dendaPerHari = (float)get_setting('denda_per_hari', 5000);
 
-        // Update angsuran
-        $pdo->prepare("UPDATE angsuran SET status='Diterima', besar_angsuran=?, tgl_pembayaran=? WHERE id_angsuran=? AND id_pinjaman=?")
-            ->execute([$nom, $tgl, $aid, $pid]);
+    if ($pid && $aidTarget !== '' && $nom > 0 && $tgl) {
+        $st_pinj = $pdo->prepare("SELECT * FROM pinjaman WHERE id_pinjaman = ?");
+        $st_pinj->execute([$pid]);
+        $pinj = $st_pinj->fetch();
+        $nomor_pinjaman = $pinj['nama_pinjaman'] ?? '';
+        $tenor = (int)($pinj['tenor'] ?? 0);
+
+        if (strpos($aidTarget, 'new_') === 0) {
+            $parts = explode('_', $aidTarget);
+            $angsuranKe = (int)$parts[2];
+
+            // Insert new angsuran
+            $pdo->prepare("INSERT INTO angsuran (id_katagori, id_anggota, id_pinjaman, tgl_pembayaran, angsuran_ke, besar_angsuran, ket, status, created_at) VALUES (1, ?, ?, ?, ?, ?, 'Bayar Manual', 'Diterima', NOW())")
+                ->execute([$mid, $pid, $tgl, $angsuranKe, $nom]);
+            $newAid = (int)$pdo->lastInsertId();
+
+            // Calculate denda & insert detail_angsuran
+            $jatuhTempo = date('Y-m-d', strtotime("+{$angsuranKe} month", strtotime($pinj['tgl_pinjaman'])));
+            $daysLate = 0;
+            $dendaTotal = 0.0;
+            if ($tgl > $jatuhTempo) {
+                $diff = (strtotime($tgl) - strtotime($jatuhTempo)) / 86400;
+                $daysLate = max(0, (int)floor($diff));
+                $dendaTotal = $daysLate * $dendaPerHari;
+            }
+
+            $pdo->prepare("INSERT INTO detail_angsuran (id_angsuran, tgl_jatuh_tempo, besar_angsuran, ket, jumlah_hari_terlambat, denda_tarif_per_hari, denda_total, status_denda, tanggal_denda, tanggal_bayar_denda, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, ?, 'Belum Dibayar', NULL, NULL, NOW(), NOW())")
+                ->execute([$newAid, $jatuhTempo, $nom, $daysLate, $dendaPerHari, $dendaTotal]);
+
+            $ke = $angsuranKe;
+        } else {
+            $angsuranId = (int)$aidTarget;
+            $st_ang = $pdo->prepare("SELECT * FROM angsuran WHERE id_angsuran = ?");
+            $st_ang->execute([$angsuranId]);
+            $ang = $st_ang->fetch();
+            $ke = (int)($ang['angsuran_ke'] ?? 0);
+
+            // Update angsuran
+            $pdo->prepare("UPDATE angsuran SET status='Diterima', besar_angsuran=?, tgl_pembayaran=? WHERE id_angsuran=? AND id_pinjaman=?")
+                ->execute([$nom, $tgl, $angsuranId, $pid]);
+
+            // Recalculate denda & update detail_angsuran
+            $jatuhTempo = date('Y-m-d', strtotime("+{$ke} month", strtotime($pinj['tgl_pinjaman'])));
+            $daysLate = 0;
+            $dendaTotal = 0.0;
+            if ($tgl > $jatuhTempo) {
+                $diff = (strtotime($tgl) - strtotime($jatuhTempo)) / 86400;
+                $daysLate = max(0, (int)floor($diff));
+                $dendaTotal = $daysLate * $dendaPerHari;
+            }
+
+            $pdo->prepare("UPDATE detail_angsuran SET tgl_jatuh_tempo = ?, besar_angsuran = ?, jumlah_hari_terlambat = ?, denda_tarif_per_hari = ?, denda_total = ?, updated_at = NOW() WHERE id_angsuran = ?")
+                ->execute([$jatuhTempo, $nom, $daysLate, $dendaPerHari, $dendaTotal, $angsuranId]);
+        }
         
         // Cek pelunasan pinjaman
-        $chk = $pdo->prepare("SELECT COUNT(*) AS c FROM angsuran WHERE id_pinjaman=? AND status!='Diterima'");
+        $chk = $pdo->prepare("SELECT COUNT(*) AS c FROM angsuran WHERE id_pinjaman=? AND status='Diterima'");
         $chk->execute([$pid]);
-        if ((int)$chk->fetch()['c'] === 0) {
+        $sudahBayarCount = (int)$chk->fetch()['c'];
+        if ($sudahBayarCount === $tenor) {
             $pdo->prepare("UPDATE pinjaman SET status='Lunas', tgl_pelunasan=CURDATE() WHERE id_pinjaman=?")
                 ->execute([$pid]);
             
@@ -507,10 +589,14 @@ $role       = 'admin';
               <span class="input-group-text">Rp</span>
               <input type="text" name="nominal" id="fNominal" data-type="currency"
                      class="form-control" required placeholder="0"
+                     readonly
                      autocomplete="off"
-                     style="height:44px;font-size:.95rem;font-weight:600;">
+                     style="height:44px;font-size:.95rem;font-weight:600;background:#f0f4ff;cursor:not-allowed;">
             </div>
-            <div class="form-text mt-1" style="font-size:.74rem;">Otomatis terisi sesuai angsuran dipilih.</div>
+            <div class="form-text mt-1" style="font-size:.74rem;">
+              Otomatis terisi sesuai angsuran dipilih.
+              <a href="#" id="editNominalToggle" onclick="toggleEditNominal(event)" style="margin-left:.3rem;font-size:.72rem;">Ubah nominal</a>
+            </div>
           </div>
           <div>
             <label class="form-label">Tanggal Bayar <span class="required">*</span></label>
@@ -520,13 +606,38 @@ $role       = 'admin';
           </div>
           <div class="d-flex align-items-end gap-2">
             <button type="button" onclick="closePayForm()" class="btn btn-light flex-fill">Batal</button>
-            <button type="submit" class="btn btn-primary flex-fill"
+            <button type="button" id="btnKonfirmasi" class="btn btn-primary flex-fill"
+              onclick="showConfirmModal()"
               style="background:linear-gradient(135deg,var(--primary),var(--primary-light));border:none;height:44px;">
-              <i class="bi bi-check2-circle me-1"></i>Simpan
+              <i class="bi bi-check2-circle me-1"></i>Simpan Pembayaran
             </button>
           </div>
         </div>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CONFIRMATION MODAL ═══ -->
+<div id="confirmModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+  <div style="background:var(--bg-card);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:min(520px,95vw);overflow:hidden;animation:slideIn .2s ease;">
+    <div style="background:linear-gradient(135deg,var(--primary-dark),var(--primary));padding:1.25rem 1.5rem;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="color:#fff;font-size:1rem;font-weight:700;"><i class="bi bi-shield-check me-2"></i>Konfirmasi Pembayaran</div>
+        <div style="color:rgba(255,255,255,.65);font-size:.76rem;margin-top:.15rem;">Pastikan data sudah benar sebelum menyimpan</div>
+      </div>
+      <button onclick="closeConfirmModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:var(--radius-sm);padding:.3rem .7rem;cursor:pointer;font-size:1rem;"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div style="padding:1.5rem;">
+      <div id="confirmDetail" style="background:var(--primary-soft);border-radius:var(--radius);padding:1rem 1.25rem;margin-bottom:1.25rem;display:grid;grid-template-columns:1fr 1fr;gap:.75rem 1.25rem;"></div>
+      <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:var(--radius);padding:.75rem 1rem;font-size:.82rem;color:#856404;margin-bottom:1.25rem;">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        Setelah disimpan, pembayaran ini langsung berstatus <strong>Diterima</strong> dan tidak dapat dibatalkan.
+      </div>
+      <div style="display:flex;gap:.75rem;justify-content:flex-end;">
+        <button onclick="closeConfirmModal()" class="btn btn-light"><i class="bi bi-x me-1"></i>Batal</button>
+        <button onclick="submitPayForm()" class="btn btn-success" style="min-width:130px;"><i class="bi bi-check2-circle me-1"></i>Ya, Simpan</button>
+      </div>
     </div>
   </div>
 </div>
@@ -600,6 +711,8 @@ function renderPinjaman(list){
     document.getElementById('emptyPinjaman').style.display='block';
     return;
   }
+  // Tag each pinjaman with its index for reference in angsuran table
+  list.forEach((p,i)=>{ p.idx = i; });
   _pinjList = list;
   document.getElementById('pinjamanTable').style.display='table';
   const tbody = document.getElementById('pinjamanBody');
@@ -654,11 +767,14 @@ function renderAngsuranTable(p, pi){
     const jt = a.jatuh_tempo ? new Date(a.jatuh_tempo) : null;
     const late = jt && jt < today;
     const jtStr = jt ? jt.toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}) : '-';
+    const canPay = a.can_pay !== false;
     let sc='gray', sl='Belum Dibayar';
-    if(a.status==='Menunggu konfirmasi'){ sc='amber'; sl='Menunggu'; }
+    if(a.status==='Menunggu konfirmasi'){ sc='amber'; sl='Menunggu Konfirmasi'; }
     if(a.status==='Ditolak'){ sc='red'; sl='Ditolak'; }
-    return `<tr onclick="pickAngsuran(${pi},${a.id},${a.nominal},'${xss(p.nomor)}')" id="arow-${a.id}">
-      <td><input type="radio" name="rad_ang" class="ang-radio" value="${a.id}" onclick="event.stopPropagation();pickAngsuran(${pi},${a.id},${a.nominal},'${xss(p.nomor)}')"></td>
+    const rowStyle = canPay ? '' : 'opacity:.55;';
+    const rowTitle = canPay ? '' : 'title="Sedang menunggu konfirmasi admin"';
+    return `<tr onclick="pickAngsuran(${p.idx??0},${JSON.stringify(a.id)},${a.nominal},'${xss(p.nomor)}',${canPay})" id="arow-${a.id}" style="${rowStyle}" ${rowTitle}>
+      <td>${canPay ? `<input type="radio" name="rad_ang" class="ang-radio" value="${a.id}" onclick="event.stopPropagation();pickAngsuran(${p.idx??0},${JSON.stringify(a.id)},${a.nominal},'${xss(p.nomor)}',true)">` : `<i class="bi bi-clock text-warning" title="Menunggu konfirmasi"></i>`}</td>
       <td><span class="ang-ke-badge">Ke-${a.angsuran_ke}</span></td>
       <td style="font-weight:700">${fRp(a.nominal)}</td>
       <td class="${late?'overdue-cell':''}">${jtStr}${late?' <i class="bi bi-exclamation-triangle-fill" title="Terlambat"></i>':''}</td>
@@ -694,8 +810,16 @@ window.togglePinjaman = function(i){
   }
 };
 
-window.pickAngsuran = function(pi, angId, nominal, nomPinjaman){
+let _selectedAngsuran = null; // store full angsuran object
+
+window.pickAngsuran = function(pi, angId, nominal, nomPinjaman, canPay){
+  if (!canPay) {
+    // Status menunggu konfirmasi - tidak bisa dibayar manual
+    return;
+  }
   const p = _pinjList[pi];
+  _selectedAngsuran = { pi, angId, nominal, nomPinjaman, p };
+
   /* radio */
   document.querySelectorAll('.ang-radio').forEach(r=>r.checked=false);
   const r = document.querySelector(`.ang-radio[value="${angId}"]`);
@@ -707,8 +831,13 @@ window.pickAngsuran = function(pi, angId, nominal, nomPinjaman){
   /* set form values */
   document.getElementById('fPinjamanId').value = p.id;
   document.getElementById('fAngsuranId').value = angId;
-  /* format nominal with main.js currency formatter compatible value */
-  document.getElementById('fNominal').value = parseFloat(nominal).toLocaleString('id-ID',{maximumFractionDigits:0});
+  /* Nominal: readonly by default, pre-filled */
+  const nominalEl = document.getElementById('fNominal');
+  nominalEl.value = parseFloat(nominal).toLocaleString('id-ID',{maximumFractionDigits:0});
+  nominalEl.readOnly = true;
+  nominalEl.style.cssText = 'height:44px;font-size:.95rem;font-weight:600;background:#f0f4ff;cursor:not-allowed;';
+  const tog = document.getElementById('editNominalToggle');
+  if(tog) tog.textContent = 'Ubah nominal';
 
   /* summary */
   document.getElementById('paySummary').innerHTML = `
@@ -722,15 +851,68 @@ window.pickAngsuran = function(pi, angId, nominal, nomPinjaman){
   /* show pay form */
   const sec = document.getElementById('paySection');
   sec.style.display='block';
-  sec.style.animation='none'; sec.offsetHeight; /* reflow */
+  sec.style.animation='none'; sec.offsetHeight;
   sec.style.animation='slideIn .25s ease';
   sec.scrollIntoView({behavior:'smooth', block:'nearest'});
+};
+
+window.toggleEditNominal = function(e){
+  e.preventDefault();
+  const el = document.getElementById('fNominal');
+  const tog = document.getElementById('editNominalToggle');
+  if (el.readOnly) {
+    el.readOnly = false;
+    el.style.cssText = 'height:44px;font-size:.95rem;font-weight:600;';
+    el.focus();
+    if(tog) tog.textContent = 'Kunci nominal';
+  } else {
+    el.readOnly = true;
+    el.style.cssText = 'height:44px;font-size:.95rem;font-weight:600;background:#f0f4ff;cursor:not-allowed;';
+    if(tog) tog.textContent = 'Ubah nominal';
+  }
 };
 
 window.closePayForm = function(){
   document.getElementById('paySection').style.display='none';
   document.querySelectorAll('.ang-radio').forEach(r=>r.checked=false);
   document.querySelectorAll('[id^="arow-"]').forEach(tr=>tr.classList.remove('ang-selected'));
+  _selectedAngsuran = null;
+};
+
+function parseCurrencyVal(str) {
+  return parseFloat(String(str).replace(/\./g,'').replace(',','.')) || 0;
+}
+
+window.showConfirmModal = function(){
+  const angId = document.getElementById('fAngsuranId').value;
+  if (!angId) { alert('Pilih angsuran yang akan dibayar terlebih dahulu.'); return; }
+  const nominal = parseCurrencyVal(document.getElementById('fNominal').value);
+  if (nominal <= 0) { alert('Nominal pembayaran tidak valid.'); return; }
+  const tgl = document.getElementById('fTanggal').value;
+  if (!tgl) { alert('Pilih tanggal bayar.'); return; }
+
+  const sa = _selectedAngsuran;
+  const tglFmt = new Date(tgl).toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
+
+  document.getElementById('confirmDetail').innerHTML = `
+    <div><div style="font-size:.7rem;font-weight:700;color:var(--primary);margin-bottom:.2rem;">NO PINJAMAN</div><div style="font-weight:700;">${sa ? xss(sa.nomPinjaman) : '-'}</div></div>
+    <div><div style="font-size:.7rem;font-weight:700;color:var(--primary);margin-bottom:.2rem;">ANGGOTA</div><div style="font-weight:700;"><?= e($anggotaInfo['nama'] ?? '') ?></div></div>
+    <div><div style="font-size:.7rem;font-weight:700;color:var(--primary);margin-bottom:.2rem;">ANGSURAN KE</div><div style="font-weight:700;">${sa ? sa.p.angsuran?.find(a=>String(a.id)===String(sa.angId))?.angsuran_ke ?? '-' : '-'}</div></div>
+    <div><div style="font-size:.7rem;font-weight:700;color:var(--primary);margin-bottom:.2rem;">TANGGAL BAYAR</div><div style="font-weight:700;">${tglFmt}</div></div>
+    <div style="grid-column:1/-1;"><div style="font-size:.7rem;font-weight:700;color:var(--primary);margin-bottom:.2rem;">NOMINAL DIBAYAR</div><div style="font-size:1.35rem;font-weight:800;color:var(--accent-green);">${fRp(nominal)}</div></div>
+  `;
+
+  const modal = document.getElementById('confirmModal');
+  modal.style.display = 'flex';
+};
+
+window.closeConfirmModal = function(){
+  document.getElementById('confirmModal').style.display = 'none';
+};
+
+window.submitPayForm = function(){
+  document.getElementById('confirmModal').style.display = 'none';
+  document.getElementById('payForm').submit();
 };
 
 window.doValidate = function(){
